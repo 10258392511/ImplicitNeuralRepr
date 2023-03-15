@@ -1,4 +1,4 @@
-from .siren import Siren
+from .siren import Siren, SirenComplex
 
 
 def load_model(*args, **kwargs):

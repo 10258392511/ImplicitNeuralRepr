@@ -33,7 +33,7 @@ class CoordDataset(Dataset):
                                ...
                                [T - 1, H - 1, W - 1]], of shape (T, 3)
     """
-    def __init__(self, data_shape: Tuple[int], data_dims: Tuple[int]):
+    def __init__(self, data_shape: Tuple[int], data_dims: Tuple[int], if_normalize=True):
         """
         data_shape: e.g. (T, H, W)
         data_dims: e.g. spatial: (1, 2); temporal: (0,)
@@ -44,6 +44,7 @@ class CoordDataset(Dataset):
         self.data_dims = list(data_dims)  # [1, 2]
         self.index_dims = []  # [0] -> 0, initialized in the for-loop below
         self.data_dims_range, self.index_dims_range = [], []  # [H, W], [T]
+        self.if_normalize = if_normalize
         for dim_iter in range(len(self.data_shape)):
             if dim_iter in self.data_dims:
                 self.data_dims_range.append(self.data_shape[dim_iter])
@@ -59,7 +60,10 @@ class CoordDataset(Dataset):
 
         self.sample_len = np.prod(self.data_dims_range)  # H * W
         self.ds_len = np.prod(self.index_dims_range)  # T
-        mgrid = torch.meshgrid([torch.arange(dim_range_iter) for dim_range_iter in self.data_dims_range], indexing="ij")  # ((H, W)...)
+        if not self.if_normalize:
+            mgrid = torch.meshgrid([torch.arange(dim_range_iter) for dim_range_iter in self.data_dims_range], indexing="ij")  # ((H, W)...)
+        else:
+            mgrid = torch.meshgrid([(torch.arange(dim_range_iter) / dim_range_iter) * 2 - 1 for dim_range_iter in self.data_dims_range], indexing="ij")
         self.mgrid = torch.stack(mgrid, dim=-1).float()  # (H, W, 2)
         self.mgrid = self.mgrid.reshape(-1, self.mgrid.shape[-1]).squeeze()  # (H * W, 2); squeezing for e.g. temporal: (T, 1) -> (T,)
     
@@ -69,7 +73,10 @@ class CoordDataset(Dataset):
     def __getitem__(self, idx):
         sample = torch.empty((self.sample_len, len(self.data_shape)), dtype=torch.float32)  # (H * W, 3)
         sub = self.idx2sub(idx)
-        sample[:, self.index_dims] = torch.FloatTensor(sub)  # fill in index info into the sample; spatial: fill in "t"; temporal: fill in "h", "w"
+        sub = torch.FloatTensor(sub)
+        if self.if_normalize:
+            sub  = (sub / torch.FloatTensor(self.index_dims_range)) * 2 - 1
+        sample[:, self.index_dims] = sub  # fill in index info into the sample; spatial: fill in "t"; temporal: fill in "h", "w"
         sample[:, self.data_dims] = self.mgrid.clone()
 
         return sample
@@ -118,7 +125,7 @@ class MetaCoordDataset(Dataset):
         is_valid = []
         for ds_iter in self.subsets:
             if idx >= len(ds_iter):
-                sample_iter = torch.empty_like(ds_iter[0])
+                sample_iter = torch.zeros_like(ds_iter[0])
                 is_valid_iter = False
             else:
                 sample_iter = ds_iter[idx]

@@ -1,4 +1,4 @@
-# Credited to Sébastien Emery at ETH (https://ee.ethz.ch/the-department/people-a-z/person-detail.MzA1Mzk1.TGlzdC8zMjc5LC0xNjUwNTg5ODIw.html)
+# Credited to Sébastien Emery at ETH (https://ee.ethz.ch/the-department/people-a-z/person-detail.MzA1Mzk1.TGlzdC8zMjc5LC0xNjUwNTg5ODIw.html) for SirenLayer and Siren
 
 import torch
 from torch import nn
@@ -77,39 +77,26 @@ class Siren(nn.Module):
 
         self.net = nn.Sequential(*self.net)
 
-    def forward(self, coords):
-        coords = coords.clone().detach().requires_grad_(True)  # allows to take derivative w.r.t. input
-        output = self.net(coords)
-        return output, coords
+    def forward(self, x):
+        return self.net(x)
 
-    def forward_with_activations(self, coords, retain_grad=False):
-        '''Returns not only model output, but also intermediate activations.
-        Only used for visualizing activations later!'''
-        activations = OrderedDict()
 
-        activation_count = 0
-        x = coords.clone().detach().requires_grad_(True)
-        activations['input'] = x
-        for i, layer in enumerate(self.net):
-            if isinstance(layer, SineLayer):
-                x, intermed = layer.forward_with_intermediate(x)
+class SirenComplex(nn.Module):
+    def __init__(self, params):
+        """
+        params: in_features, hidden_features, hidden_layers, out_features, 
+                outermost_linear: bool, first_omega_0, hidden_omega_0
+        """
+        super().__init__()
+        self.params = params
+        self.siren_real = Siren(**self.params)
+        self.siren_imag = Siren(**self.params)
+    
+    def forward(self, x: torch.Tensor):
+        x = x
+        out_real = self.siren_real(x)
+        out_imag = self.siren_imag(x)
+        x_out = out_real + 1j * out_imag
 
-                if retain_grad:
-                    x.retain_grad()
-                    intermed.retain_grad()
-
-                activations['_'.join((str(layer.__class__), "%d" % activation_count))] = intermed
-                activation_count += 1
-            else:
-                x = layer(x)
-
-                if retain_grad:
-                    x.retain_grad()
-
-            activations['_'.join((str(layer.__class__), "%d" % activation_count))] = x
-            activation_count += 1
-
-        return activations
-
-    def get_nb_parameters(self):
-        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return x_out
+    
