@@ -63,7 +63,7 @@ class CoordDataset(Dataset):
         if not self.if_normalize:
             mgrid = torch.meshgrid([torch.arange(dim_range_iter) for dim_range_iter in self.data_dims_range], indexing="ij")  # ((H, W)...)
         else:
-            mgrid = torch.meshgrid([(torch.arange(dim_range_iter) / dim_range_iter) * 2 - 1 for dim_range_iter in self.data_dims_range], indexing="ij")
+            mgrid = torch.meshgrid([(torch.arange(dim_range_iter) / (dim_range_iter  - 1)) * 2 - 1 for dim_range_iter in self.data_dims_range], indexing="ij")
         self.mgrid = torch.stack(mgrid, dim=-1).float()  # (H, W, 2)
         self.mgrid = self.mgrid.reshape(-1, self.mgrid.shape[-1]).squeeze()  # (H * W, 2); squeezing for e.g. temporal: (T, 1) -> (T,)
     
@@ -75,7 +75,7 @@ class CoordDataset(Dataset):
         sub = self.idx2sub(idx)
         sub = torch.FloatTensor(sub)
         if self.if_normalize:
-            sub  = (sub / torch.FloatTensor(self.index_dims_range)) * 2 - 1
+            sub  = (sub / (torch.FloatTensor(self.index_dims_range) - 1)) * 2 - 1
         sample[:, self.index_dims] = sub  # fill in index info into the sample; spatial: fill in "t"; temporal: fill in "h", "w"
         sample[:, self.data_dims] = self.mgrid.clone()
 
@@ -163,15 +163,17 @@ class MetaCoordDM(LightningDataModule):
     Note we are solving an optimization problem for one image, thus we only need the training data. Instead of validation data, we'll
     use a callback with on_train_epoch_end hook to monitor metrics (e.g. NRMSE, SSIM) comparing the reconstructed image with the original. 
     """
-    def __init__(self, params,  datasets: List[CoordDataset], num_samples: List[int], seed=None):
+    def __init__(self, params,  datasets: List[CoordDataset], num_samples: List[int], pred_ds: CoordDataset, seed=None):
         """
         params: batch_size, num_workers
+        pred_ds: for example, spatial for 2D + time; used to obtain the whole reconstruction
         """
         super().__init__()
         self.params = params
         self.datasets = datasets
         self.num_samples = num_samples
         self.meta_ds = None
+        self.pred_ds = pred_ds
 
     def prepare_data(self):
         return super().prepare_data()
@@ -182,7 +184,12 @@ class MetaCoordDM(LightningDataModule):
     def train_dataloader(self):
         loader = DataLoader(self.meta_ds, batch_size=self.params["batch_size"], num_workers=self.params["num_workers"], shuffle=True)
 
-        return loader       
+        return loader  
+
+    def predict_dataloader(self):
+        loader = DataLoader(self.pred_ds, batch_size=self.params["batch_size"], num_workers=self.params["num_workers"])
+
+        return loader   
 
     def reload_dataloader(self) -> None:
         """

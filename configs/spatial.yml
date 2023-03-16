@@ -1,0 +1,23 @@
+model:
+  name: "SirenComplex"
+  in_features: 2
+  hidden_features: 256
+  out_features: 2
+  hidden_layers: 8
+  outermost_linear: true
+  first_omega_0: 30
+  hidden_omega_0: 30
+
+transforms:
+  dc:
+    name: "SENSE"
+    sens_type: "exp"
+    num_sens: 2
+    in_shape: [127, 127]
+    mask_params: 
+      if_temporal: false
+    seed: 0
+
+  reg:  # not used; applying both horizonal and vertical TV; loaded directly in TrainSpatial
+    name: "FiniteDiff"
+    dim: -1

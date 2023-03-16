@@ -89,14 +89,13 @@ class SirenComplex(nn.Module):
         """
         super().__init__()
         self.params = params
-        self.siren_real = Siren(**self.params)
-        self.siren_imag = Siren(**self.params)
+        self.siren = Siren(**params)
     
     def forward(self, x: torch.Tensor):
-        x = x
-        out_real = self.siren_real(x)
-        out_imag = self.siren_imag(x)
+        x_out = self.siren(x)
+        out_real, out_imag = x_out.chunk(2, dim=-1)
         x_out = out_real + 1j * out_imag
 
+        # (..., 1)
         return x_out
     
