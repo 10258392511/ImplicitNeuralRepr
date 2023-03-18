@@ -22,6 +22,7 @@ class TrainSpatialCallack(Callback):
         self.img_gt = img_gt  # (H, W)
         # self.dm = dm
         self.counter = -1
+        self.params["save_dir"] = os.path.join(self.params["save_dir"], "screenshots/")
         if not os.path.isdir(self.params["save_dir"]):
             os.makedirs(self.params["save_dir"])
     

@@ -3,7 +3,7 @@ model:
   in_features: 2
   hidden_features: 256
   out_features: 2
-  hidden_layers: 8
+  hidden_layers: 4
   outermost_linear: true
   first_omega_0: 30
   hidden_omega_0: 30
