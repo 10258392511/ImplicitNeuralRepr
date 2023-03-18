@@ -51,4 +51,3 @@ class TrainSpatialCallack(Callback):
         vis_images(torch.abs(pred), torch.angle(pred), torch.abs(error_img), torch.angle(error_img),
                    if_save=True, save_dir=self.params["save_dir"], filename=f"screenshot_epoch_{self.counter + 1}.png", 
                    titles=["mag", "phase", "error mag", "error phase"])
-   

@@ -3,7 +3,7 @@ import torch
 
 from torch.utils.data import Dataset, Subset, DataLoader
 from pytorch_lightning import LightningDataModule
-from typing import Union, Tuple, List
+from typing import Union, Tuple, List, Sequence
 
 
 class CoordDataset(Dataset):
@@ -33,7 +33,7 @@ class CoordDataset(Dataset):
                                ...
                                [T - 1, H - 1, W - 1]], of shape (T, 3)
     """
-    def __init__(self, data_shape: Tuple[int], data_dims: Tuple[int], if_normalize=True):
+    def __init__(self, data_shape: Sequence[int], data_dims: Sequence[int], if_normalize=True):
         """
         data_shape: e.g. (T, H, W)
         data_dims: e.g. spatial: (1, 2); temporal: (0,)
