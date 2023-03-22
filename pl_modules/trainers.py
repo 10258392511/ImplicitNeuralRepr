@@ -114,7 +114,7 @@ class TrainSpatial(LightningModule):
 class Train2DTime(LightningModule):
     def __init__(self, siren: nn.Module, grid_sample: nn.Module, measurement: torch.Tensor, config: dict,  params: dict):
         """
-        params: lamda_reg, if_pred_res
+        params: lamda_reg, siren_weight, grid_sample_weight
         """
         super().__init__()
         self.params = params
@@ -136,9 +136,7 @@ class Train2DTime(LightningModule):
         # })
     
     def collate_pred(self, pred_siren: torch.Tensor, pred_grid_sample: torch.Tensor) -> torch.Tensor:
-        pred = pred_siren
-        if self.params["if_pred_res"]:
-            pred = pred + pred_grid_sample
+        pred = pred_siren * self.params["siren_weight"] + pred_grid_sample * self.params["grid_sample_weight"]
         
         return pred 
     

@@ -111,7 +111,7 @@ if __name__ == "__main__":
     # load model & generate measurement and ZF
     model = load_model(args_dict["task_name"], config_dict=config_dict)
     lin_tfm = load_linear_transform(args_dict["task_name"], "dc")
-    measurement = lin_tfm(img_complex)  # (H, W)
+    measurement = lin_tfm(img_complex)  # (H, W, K)
     measurement += args_dict["noise_std"] * torch.randn_like(measurement)
     zf = lin_tfm.conj_op(measurement)  # (H, W)
     torch.save(measurement, os.path.join(args_dict["output_dir"], "measurement.pt"))
@@ -190,7 +190,6 @@ if __name__ == "__main__":
         for key, val in args_dict.items():
             wf.write(f"{key}: {val}\n")
     
-    # training
     trainer = Trainer(
         accelerator="gpu",
         devices=1,

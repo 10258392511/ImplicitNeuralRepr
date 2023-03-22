@@ -88,3 +88,9 @@ class Train2DTimeCallack(Callback):
         torch.save(pred.detach().cpu(), os.path.join(self.params["save_dir"], f"recons_{self.counter + 1}.pt"))
         save_vol_as_gif(torch.abs(pred), save_dir=self.params["save_dir"], filename=f"mag_{self.counter + 1}.gif")
         save_vol_as_gif(torch.angle(pred), save_dir=self.params["save_dir"], filename=f"phase_{self.counter + 1}.gif")
+
+        low_res = pl_module.grid_sample.get_low_res().detach().cpu()  # (1, 1, T0, H0, W0)
+        low_res = low_res.squeeze().unsqueeze(1)  # (T0, 1, H0, W0)
+        duration = pred.shape[0]  # set duration equal to "pred"
+        save_vol_as_gif(torch.abs(low_res), save_dir=self.params["save_dir"], filename=f"mag_low_res_{self.counter + 1}.gif", duration=duration)
+        save_vol_as_gif(torch.angle(low_res), save_dir=self.params["save_dir"], filename=f"phase_low_res_{self.counter + 1}.gif", duration=duration)
