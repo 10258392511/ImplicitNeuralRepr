@@ -1,3 +1,4 @@
+import torch
 import os
 import yaml
 
@@ -7,7 +8,19 @@ for _ in range(2):
 
 
 CONFIG_PATHS = {
-    "spatial": os.path.join(ROOT, "configs", "spatial.yml")
+    "spatial": os.path.join(ROOT, "configs", "spatial.yml"),
+    "2d+time": os.path.join(ROOT, "configs", "2d_time.yml")
+}
+
+
+OPTIMIZER_MAP = {
+    "AdamW": torch.optim.AdamW,
+    "Adam": torch.optim.Adam
+}
+
+
+SCHEDULER_MAP = {
+    "StepLR": torch.optim.lr_scheduler.StepLR
 }
 
 

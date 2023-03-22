@@ -75,6 +75,10 @@ if __name__ == "__main__":
     with open(os.path.join(args_dict["output_dir"], "args_dict.pkl"), "wb") as wf:
         pickle.dump(args_dict, wf)
     
+    with open(os.path.join(args_dict["output_dir"], "args_dict.txt"), "w") as wf:
+        for key, val in args_dict.items():
+            wf.write(f"{key}: {val}\n")
+    
     config_dict = load_config(args_dict["task_name"])
     config_dict["model"].update({
         "hidden_features": args_dict["hidden_features"],

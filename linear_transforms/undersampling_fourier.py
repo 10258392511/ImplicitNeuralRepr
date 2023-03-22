@@ -3,6 +3,7 @@ import torch
 
 from scipy.spatial import distance_matrix
 from .base import i2k_complex, k2i_complex, generate_mask, LinearTransform
+from typing import Union
 
 
 class RandomUndersamplingFourier(LinearTransform):
@@ -21,9 +22,11 @@ class RandomUndersamplingFourier(LinearTransform):
             self.mask_params.pop("if_temporal")
         self.mask = generate_mask(T, N, seed=seed, **self.mask_params)  # (H, W) or (T, H, W)
 
-    def __call__(self, X: torch.Tensor) -> torch.Tensor:
+    def __call__(self, X: torch.Tensor, t_indices: Union[torch.Tensor, None]) -> torch.Tensor:
         # X: (..., H, W) or (..., T, H, W)
         mask = self.mask.to(X.device)
+        if t_indices is not None:
+            mask = mask[t_indices, :, :]
         S = mask * i2k_complex(X)  # (..., H, W) or (..., T, H, W)
 
         return S
@@ -77,13 +80,13 @@ class SENSE(LinearTransform):
 
         return sens_map
 
-    def __call__(self, X: torch.Tensor) -> torch.Tensor:
+    def __call__(self, X: torch.Tensor, t_indices: Union[torch.Tensor, None] = None) -> torch.Tensor:
         # X: (..., H, W)
         S = []
         sens_maps = self.sens_maps.to(X.device)
         for i in range(sens_maps.shape[0]):
             sens_map_iter = sens_maps[i]  # (H, W)
-            S.append(self.random_under_fourier(sens_map_iter * X))
+            S.append(self.random_under_fourier(sens_map_iter * X, t_indices))
 
         S = torch.stack(S, dim=-1)  # [(..., H, W)...] -> (..., H, W, num_sens)
 

@@ -1,6 +1,7 @@
 import os
 
 from .siren import Siren, SirenComplex
+from .grid_sample import GridSample
 from ImplicitNeuralRepr.configs import load_config
 from typing import Union
 

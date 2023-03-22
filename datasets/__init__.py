@@ -61,7 +61,7 @@ def idx2val(X_idx: torch.Tensor, dim_ranges: Sequence[int]):
 
 def add_phase(imgs: torch.Tensor, init_shape: Union[tuple, int] = (5, 5), seed=None, mode="spatial"):
     # imgs: (B, C, H, W) or (T, C, H, W)
-    assert mode in ["spatial", "2D+time"]
+    assert mode in ["spatial", "2d+time"]
     if seed is not None:
         torch.manual_seed(seed)
     imgs_out = imgs
@@ -75,7 +75,7 @@ def add_phase(imgs: torch.Tensor, init_shape: Union[tuple, int] = (5, 5), seed=N
             resizer = monai_Resize((H, W), mode="bicubic", align_corners=True)
             phase = resizer(phase_init_patch)  # (C, H, W)
             imgs_out[i, ...] = img_iter * torch.exp(1j * phase)
-    elif mode == "2D+time":
+    elif mode == "2d+time":
         # use 3D phase map for each channel for (T, C, H, W)
         assert len(init_shape) == 3
         T, C, H, W = imgs.shape

@@ -187,6 +187,7 @@ class MetaCoordDM(LightningDataModule):
         return loader  
 
     def predict_dataloader(self):
+        # Prediction only needs spatial coord
         loader = DataLoader(self.pred_ds, batch_size=self.params["batch_size"], num_workers=self.params["num_workers"])
 
         return loader   
