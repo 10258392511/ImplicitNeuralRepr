@@ -40,8 +40,8 @@ def metric_vs_one_hyperparam(root_dirs: list, metrics: list, param_tune: str, pa
         print(f"current: {root_dir_iter}")
         img = torch.load(os.path.join(root_dir_iter, orig_filename))
         recons = torch.load(os.path.join(root_dir_iter, recons_filename))
-        img = ptu.to_numpy(img)  # (T, C, H, W)
-        recons = ptu.to_numpy(recons)[0]  # (T, C, H, W)
+        img = ptu.to_numpy(img)  # (T, H, W)
+        recons = ptu.to_numpy(recons)  # (T, H, W)
 
         with open(os.path.join(root_dir_iter, args_filename), "rb") as rf:
             args_dict = pickle.load(rf)

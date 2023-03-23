@@ -186,6 +186,6 @@ if __name__ == "__main__":
     
     preds = trainer.predict(lit_model, datamodule=dm)
     pred = lit_model.pred2vol(preds).unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
-    torch.save(pred.detach().cpu(), os.path.join(args_dict["output_dir"], f"reconstructions.pt"))
+    torch.save(pred.detach().cpu().squeeze(1), os.path.join(args_dict["output_dir"], f"reconstructions.pt"))
     save_vol_as_gif(torch.abs(pred), save_dir=args_dict["output_dir"], filename=f"recons_mag.gif")
     save_vol_as_gif(torch.angle(pred), save_dir=args_dict["output_dir"], filename=f"recons_phase.gif")
