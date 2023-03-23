@@ -18,7 +18,7 @@ MODEL_NAME_MAP = {
 # task names: see CONFIG_PATHS from configs/__init__.py
 MODEL_RELOAD_PATHS = {
     "spatial": "spatial_logs/2023_03_17_21_52_38_197732",
-    "2d+time": None
+    "2d+time": "2d_time_logs/2023_03_23_00_09_34_717456",
 }
 
 

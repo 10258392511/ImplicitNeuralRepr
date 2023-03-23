@@ -207,7 +207,7 @@ class Train2DTime(LightningModule):
         T, H, W = self.in_shape
         x_s = batch
         x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 3)
-        pred_siren = self.siren(x_s)  # (B', H, W)
+        pred_siren = self.siren(x_s).squeeze(-1)  # (B', H, W)
         pred_grid_sample = self.grid_sample(x_s).squeeze(0)  # (1, B', H, W) -> (B', H, W)
         pred_s = self.collate_pred(pred_siren, pred_grid_sample)  # (B', H, W)
 
