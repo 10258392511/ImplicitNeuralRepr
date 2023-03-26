@@ -241,3 +241,7 @@ class Train2DTime(LightningModule):
             })
         
         return opt_siren_dict, opt_grid_sample_dict
+
+
+class Train2DTimeReg(LightningModule):
+    pass
