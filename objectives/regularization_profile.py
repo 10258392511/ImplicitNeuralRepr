@@ -3,6 +3,7 @@ import torch
 
 from torchmetrics import Metric
 from functools import partial
+from ImplicitNeuralRepr.utils.utils import dict2str
 from typing import Union
 
 
@@ -22,6 +23,11 @@ def plot_profile(profile_name: str, profile_kwargs: Union[dict, None] = None, nu
     axis.grid(axis="y")
     axis.set_xlim((-1, 1))
     axis.set_ylim((0, 1))
+    title_dict = {
+        "name": profile_name,
+        **profile_kwargs
+    }
+    axis.set_title(dict2str(title_dict))
 
     return fig
 

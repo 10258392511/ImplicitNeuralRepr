@@ -66,6 +66,7 @@ class Train2DTimeCallack(Callback):
         if not os.path.isdir(self.params["save_dir"]):
             os.makedirs(self.params["save_dir"])
     
+    @torch.no_grad()
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         self.counter += 1
         if self.counter % self.params["save_interval"] != 0 and self.counter != trainer.max_epochs - 1:
@@ -74,6 +75,9 @@ class Train2DTimeCallack(Callback):
         preds = []
         siren = pl_module.siren.to(ptu.DEVICE)
         grid_sample = pl_module.grid_sample.to(ptu.DEVICE)
+        siren.eval()
+        grid_sample.eval()
+
         for batch in trainer.datamodule.predict_dataloader():
             T, H, W = pl_module.in_shape
             x_s = batch
@@ -111,25 +115,28 @@ class Train2DTimeRegCallack(Callback):
         if not os.path.isdir(self.params["save_dir"]):
             os.makedirs(self.params["save_dir"])
     
+    @torch.no_grad()
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         self.counter += 1
         if self.counter % self.params["save_interval"] != 0 and self.counter != trainer.max_epochs - 1:
             return
         # preds = trainer.predict(pl_module, datamodule=trainer.datamodule)  # [(B, H, W)...]
         preds = []
-        # siren = pl_module.siren.to(ptu.DEVICE)
-        for batch in trainer.datamodule.predict_dataloader():
-            # T, H, W = pl_module.in_shape
-            # x_s = batch
-            # x_s = x_s.to(ptu.DEVICE)
-            # x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 3)
-            # pred_siren = siren(x_s).squeeze(-1)  # (B', H, W)
-            # pred_grid_sample = grid_sample(x_s).squeeze(0)  # (1, B', H, W) -> (B', H, W)
-            # pred_s = pl_module.collate_pred(pred_siren, pred_grid_sample)  # (B', H, W)
+        siren = pl_module.siren.to(ptu.DEVICE)
+        siren.eval()
 
-            pred_s = pl_module.predict_step(batch, None)
+        for batch in trainer.datamodule.predict_dataloader():
+            Lambda, T, H, W = pl_module.in_shape
+            x_s = batch
+            x_s = x_s.to(ptu.DEVICE)
+            x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 4)
+            pred_siren = siren(x_s).squeeze(-1)  # (B', H, W)
+            pred_s = pred_siren
+
+            # pred_s = pl_module.predict_step(batch, None)
             preds.append(pred_s)
 
         preds = pl_module.pred2vol(preds)  # (Lambda, T, H, W)
-        pl_module.save_preds(preds, self.params["save_dir"])
+        save_dir = os.path.join(self.params["save_dir"], f"epoch_{self.counter}")
+        pl_module.save_preds(preds, save_dir)
         

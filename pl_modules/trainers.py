@@ -266,13 +266,13 @@ class Train2DTimeReg(LightningModule):
         self.measurement = measurement  # img: (T, H, W)
         dc_lin_tfm = load_linear_transform("2d+time+reg", "dc")
         self.dc_loss = DCLoss(dc_lin_tfm)
-        reg_lin_tfm = load_linear_transform("2d+time_reg", "reg")
+        reg_lin_tfm = load_linear_transform("2d+time+reg", "reg")
         self.reg_loss = RegLoss(reg_lin_tfm)
         profile_name, profile_params = load_reg_profile(config["transforms"]["reg_profile"])
         self.reg_profile_loss = RegProfileLoss(profile_name, profile_kwargs=profile_params)
         self.dc_metric = DCLossMetric(dc_lin_tfm)
         self.reg_metric = RegLossMetric(reg_lin_tfm)
-        self.reg_profile_metric = RegProfileLossMetric(profile_name, profile_params)
+        self.reg_profile_metric = RegProfileLossMetric(profile_name, profile_kwargs=profile_params)
     
     def training_step(self, batch, batch_idx):
         """

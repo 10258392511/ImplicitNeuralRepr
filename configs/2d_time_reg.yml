@@ -13,7 +13,7 @@ transforms:
     name: "SENSE"
     sens_type: "exp"
     num_sens: 2
-    in_shape: [25, 127, 127]
+    in_shape: [10, 25, 127, 127]  # (Lambda, T, H, W)
     mask_params: 
       if_temporal: true
     seed: 0
@@ -25,15 +25,15 @@ transforms:
   reg_profile:
     name: "log"
     profile_params:
-      alpha: !!float 1
+      alpha: !!float 5
 
 optimization:
   siren:
     opt_name: "AdamW"
     opt_params: 
-      lr: !!float 1e-4
+      lr: !!float 1e-3
     scheduler_name: "StepLR"
     scheduler_params:
-      step_size: 50
+      step_size: 20
       gamma: 0.5
   

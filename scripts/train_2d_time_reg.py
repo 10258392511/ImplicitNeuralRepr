@@ -39,7 +39,6 @@ if __name__ == "__main__":
     parser.add_argument("--cine_idx", type=int, default=10)
     parser.add_argument("--cine_mode", default="val")
     parser.add_argument("--cine_ds_type", default="2d+time")
-    parser.add_argument("--Lambda", type=int, default=10)
     parser.add_argument("--seed", type=int, default=0)
 
     parser.add_argument("--batch_size", type=int, default=512)
@@ -60,6 +59,10 @@ if __name__ == "__main__":
     config_dict = load_config(args_dict["task_name"])
     all_dict = args_dict.copy()
     all_dict.update(config_dict)
+    
+    args_dict.update({
+        "Lambda": config_dict["transforms"]["dc"]["in_shape"][0]
+    })
 
     for dir_name_key in ["log_dir", "output_dir"]:
         dir_name = args_dict[dir_name_key]
@@ -189,4 +192,5 @@ if __name__ == "__main__":
         trainer.fit(lit_model, datamodule=dm)
     
     preds = trainer.predict(lit_model, datamodule=dm)
+    preds = lit_model.pred2vol(preds)
     Train2DTimeReg.save_preds(preds, args_dict["output_dir"])

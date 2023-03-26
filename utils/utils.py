@@ -168,3 +168,14 @@ def dict2namespace(config):
             new_value = value
         setattr(namespace, key, new_value)
     return namespace
+
+
+def dict2str(params: dict, delimiter=", "):
+    out_str = ""
+    for i, (key, val) in enumerate(params.items()):
+        delimiter_iter = delimiter
+        if i == len(params) - 1:
+            delimiter_iter = ""
+        out_str += f"{key}: {val}{delimiter_iter}"
+    
+    return out_str
