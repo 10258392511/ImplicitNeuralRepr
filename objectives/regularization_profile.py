@@ -61,13 +61,13 @@ class RegProfileLoss(object):
     """
     reg_profile_loss = lamda * norm(X - X_tgt)
     """
-    def __init__(self, profile_name: str, norm_order: Union[int, str] = 1, profile_kwargs: Union[dict, None] = None):
+    def __init__(self, profile_name: str, norm_order: Union[int, str] = 2, profile_kwargs: Union[dict, None] = None):
         if profile_kwargs is None:
             profile_kwargs = {}
         self.profile = partial(NAME2PROFILE[profile_name], **profile_kwargs)
         self.norm_order = norm_order
     
-    def __call__(self, X: torch.Tensor, coord: torch.Tensor, lamda: float = 2.):
+    def __call__(self, X: torch.Tensor, coord: torch.Tensor, lamda: float = 1.):
         """ 
         X: (B, Lambda) 
         coord: (B, Lambda), i.e. extracted from e.g. (lamda, t, y, x)
@@ -76,7 +76,7 @@ class RegProfileLoss(object):
         coord_min, coord_min_inds = coord.min(dim=-1, keepdim=True)  # (B, 1)
         assert torch.allclose(coord_min, torch.tensor(-1.).to(coord_min.device))
         X_tgt = X[coord_min_inds].detach() * weights
-        loss = torch.norm(X - X_tgt, self.norm_order) ** self.norm_order
+        loss = lamda * torch.norm(X - X_tgt, self.norm_order) ** self.norm_order
 
         return loss
 

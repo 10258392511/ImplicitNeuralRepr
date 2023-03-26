@@ -94,3 +94,42 @@ class Train2DTimeCallack(Callback):
         duration = pred.shape[0]  # set duration equal to "pred"
         save_vol_as_gif(torch.abs(low_res), save_dir=self.params["save_dir"], filename=f"mag_low_res_{self.counter + 1}.gif", duration=duration)
         save_vol_as_gif(torch.angle(low_res), save_dir=self.params["save_dir"], filename=f"phase_low_res_{self.counter + 1}.gif", duration=duration)
+
+
+class Train2DTimeRegCallack(Callback):
+    """
+    Saves reconstructed images.
+    """
+    def __init__(self, params: dict):
+        """
+        params: save_dir, save_interval
+        """
+        super().__init__()
+        self.params = params
+        self.counter = -1
+        self.params["save_dir"] = os.path.join(self.params["save_dir"], "screenshots/")
+        if not os.path.isdir(self.params["save_dir"]):
+            os.makedirs(self.params["save_dir"])
+    
+    def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        self.counter += 1
+        if self.counter % self.params["save_interval"] != 0 and self.counter != trainer.max_epochs - 1:
+            return
+        # preds = trainer.predict(pl_module, datamodule=trainer.datamodule)  # [(B, H, W)...]
+        preds = []
+        # siren = pl_module.siren.to(ptu.DEVICE)
+        for batch in trainer.datamodule.predict_dataloader():
+            # T, H, W = pl_module.in_shape
+            # x_s = batch
+            # x_s = x_s.to(ptu.DEVICE)
+            # x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 3)
+            # pred_siren = siren(x_s).squeeze(-1)  # (B', H, W)
+            # pred_grid_sample = grid_sample(x_s).squeeze(0)  # (1, B', H, W) -> (B', H, W)
+            # pred_s = pl_module.collate_pred(pred_siren, pred_grid_sample)  # (B', H, W)
+
+            pred_s = pl_module.predict_step(batch, None)
+            preds.append(pred_s)
+
+        preds = pl_module.pred2vol(preds)  # (Lambda, T, H, W)
+        pl_module.save_preds(preds, self.params["save_dir"])
+        

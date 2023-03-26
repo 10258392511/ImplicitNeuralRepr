@@ -17,3 +17,13 @@ def load_optimizer(opt_dict: dict, model: nn.Module):
         scheduler = scheduler_ctor(opt, **opt_dict["scheduler_params"])
     
     return opt, scheduler
+
+
+def load_reg_profile(profile_dict: dict):
+    """
+    Load regularization profile. Refer to 2d_time_reg.uml for standard config.
+    """
+    profile_name = profile_dict["name"]
+    profile_params = profile_dict["profile_params"]
+
+    return profile_name, profile_params

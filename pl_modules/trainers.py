@@ -1,14 +1,24 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import os
+import pickle
 
 from pytorch_lightning import LightningModule
 from ImplicitNeuralRepr.datasets import val2idx
 from ImplicitNeuralRepr.linear_transforms import LinearTransform, FiniteDiff, load_linear_transform
 from ImplicitNeuralRepr.objectives.data_consistency import DCLoss, DCLossMetric
 from ImplicitNeuralRepr.objectives.regularization import RegLoss, RegLossMetric
+from ImplicitNeuralRepr.objectives.regularization_profile import RegProfileLoss, RegProfileLossMetric
 from torchmetrics import MetricCollection
-from .utils import load_optimizer
+from .utils import (
+    load_optimizer,
+    load_reg_profile
+)
+from ImplicitNeuralRepr.utils.utils import (
+    save_vol_as_gif
+)
 from collections import defaultdict
 from einops import rearrange
 from typing import List
@@ -244,4 +254,173 @@ class Train2DTime(LightningModule):
 
 
 class Train2DTimeReg(LightningModule):
-    pass
+    def __init__(self, siren: nn.Module, measurement: torch.Tensor, config: dict,  params: dict):
+        """
+        params: lamda_reg_profile
+        """
+        super().__init__()
+        self.params = params
+        self.config = config
+        self.in_shape = config["transforms"]["dc"]["in_shape"]  # (Lambda, T, H, W)
+        self.siren = siren
+        self.measurement = measurement  # img: (T, H, W)
+        dc_lin_tfm = load_linear_transform("2d+time+reg", "dc")
+        self.dc_loss = DCLoss(dc_lin_tfm)
+        reg_lin_tfm = load_linear_transform("2d+time_reg", "reg")
+        self.reg_loss = RegLoss(reg_lin_tfm)
+        profile_name, profile_params = load_reg_profile(config["transforms"]["reg_profile"])
+        self.reg_profile_loss = RegProfileLoss(profile_name, profile_kwargs=profile_params)
+        self.dc_metric = DCLossMetric(dc_lin_tfm)
+        self.reg_metric = RegLossMetric(reg_lin_tfm)
+        self.reg_profile_metric = RegProfileLossMetric(profile_name, profile_params)
+    
+    def training_step(self, batch, batch_idx):
+        """
+        batch: (B, H * W, 4), (B, T, 4), (B, Lambda, 4); coord: (lamda, t, y, x)
+        """
+        Lambda, T, H, W = self.in_shape
+        x_s, x_t, x_reg, mask = batch
+        dc_loss, reg_loss, reg_profile_loss = 0., 0., 0.
+
+        x_s = x_s[mask[:, 0], ...]  # (B', H * W, 4)
+        if x_s.shape[0] > 0:
+            x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 4)
+            pred_siren = self.siren(x_s).squeeze(-1)  # (B', H, W)
+            pred_s = pred_siren
+
+            # x_s: (B', H, W, 4); # coord order: (lamda, t, y, x)
+            t_inds = torch.round((x_s[:, 0, 0, 1] + 1) / 2 * (T - 1))  # (B,); each sample of shape (H, W, 4) has the same t (repeated for different lamda's)
+            t_inds = t_inds.long()
+            measurement_t_slices = self.measurement[..., t_inds, :, :, :]  # .measurement: (..., T, H, W, num_sens) -> (..., B', H, W, num_sens)
+
+            dc_loss = self.dc_loss(pred_s, measurement_t_slices, t_inds)
+            dc_metric = self.dc_metric(pred_s, measurement_t_slices, t_inds)
+
+        x_t = x_t[mask[:, 1], ...]  # (B', T, 4)
+        if x_t.shape[0] > 0:
+            pred_siren = self.siren(x_t).squeeze(-1)  # (B', T)
+            pred_t = pred_siren
+        
+            reg_loss = self.reg_loss(pred_t, 1.)
+            reg_metric = self.reg_metric(pred_t, 1.)
+        
+        x_reg = x_reg[mask[:, 2], ...]  # (B', Lambda, 4)
+        if x_reg.shape[0] > 0:
+            pred_siren = self.siren(x_reg).squeeze(-1)  # (B', Lambda)
+            pred_reg = pred_siren
+
+            reg_profile_loss = self.reg_profile_loss(pred_reg, x_reg[..., 0], self.params["lamda_reg_profile"])
+            reg_profile_metric = self.reg_profile_metric(pred_reg, x_reg[..., 0], self.params["lamda_reg_profile"])
+        
+        loss = reg_profile_loss
+        if reg_loss > 0:
+            loss = loss + reg_loss
+        if dc_loss > 0:
+            loss = loss + dc_loss
+        
+        # logging
+        log_dict = {
+            "loss": loss,
+            "dc_loss": dc_loss,
+            "reg_loss": reg_loss,
+            "reg_profile_loss": reg_profile_loss
+        }
+        self.log_dict(log_dict, prog_bar=True, on_step=True)
+
+        return loss
+
+    def on_train_epoch_end(self) -> None:
+        dc_loss = self.dc_metric.compute()
+        reg_loss = self.reg_metric.compute()
+        reg_profile_loss = self.reg_profile_metric.compute()
+        loss = dc_loss + reg_loss + reg_profile_loss
+        log_dict = {
+            "epoch_loss": loss,
+            "epoch_dc_loss": dc_loss,
+            "epoch_reg_loss": reg_loss,
+            "epoch_reg_profile_loss": reg_profile_loss
+        }
+        self.log_dict(log_dict, prog_bar=True, on_epoch=True)
+
+        self.dc_metric.reset()
+        self.reg_metric.reset()
+        self.reg_profile_metric.reset()
+
+    def predict_step(self, batch, batch_idx):
+        # batch: (B, H * W, 4)
+        Lambda, T, H, W = self.in_shape
+        x_s = batch
+        x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 4)
+        pred_siren = self.siren(x_s).squeeze(-1)  # (B', H, W)
+        pred_s = pred_siren
+
+        return pred_s
+
+    def pred2vol(self, preds: List[torch.Tensor]) -> torch.Tensor:
+        """
+        Use coord_ds.idx2sub(.) or just rearrange(.) since no shuffling is applied.
+        Note this is a simplified approach to choose reg per voxel, since this method chooses one common reg for the whole volume.
+
+        preds: list[(B', H, W)]
+        """
+        Lambda, T, H, W = self.in_shape
+        preds_out = torch.cat(preds, dim=0)  # ((Lambda * T), H, W)
+        preds_out = rearrange(preds_out, "(L T) H W -> L T H W", L=Lambda)
+
+        # (Lambda, T, H, W)
+        return preds_out
+
+    @staticmethod
+    def save_preds(preds: torch.Tensor, save_dir: str, **kwargs):
+        """
+        kwargs: extra Tensors to save (e.g. original.pt)
+        preds: (Lambda, T, H, W)
+
+        + save_dir
+            + lamda_0
+                - desc.txt: lamda = -1.
+                - original.pt
+                - reconstructions.pt
+                - recons_mag.gif
+                - recons_phase.gif
+            ...
+        """
+        preds = preds.detach().cpu()
+        Lambda = preds.shape[0]
+        lamda_grid = np.arange(Lambda) / (Lambda - 1)
+        lamda_grid = lamda_grid * 2 - 1
+        for i in range(Lambda):
+            lamda_iter = lamda_grid[i]
+            cur_dir = os.path.join(save_dir, f"lamda_{i}")
+            if not os.path.isdir(cur_dir):
+                os.makedirs(cur_dir)
+            desc_dict = {
+                "lamda_idx": i,
+                "lamda_total": Lambda,
+                "lamda": lamda_iter
+            }
+            with open(os.path.join(cur_dir, "desc.txt"), "w") as wf:
+                for key, val in desc_dict.items():
+                    wf.write(f"{key}: {val}\n")
+            with open(os.path.join(cur_dir, "args_dict.pkl"), "wb") as wf:
+                pickle.dump(desc_dict, wf)
+
+            for key, val in kwargs.items():
+                assert isinstance(val, torch.Tensor)
+                torch.save(val, os.path.join(cur_dir, f"{key}.pt"))
+            torch.save(preds[i, ...], os.path.join(cur_dir, "reconstructions.pt"))  # (T, H, W)
+            save_vol_as_gif(torch.abs(preds[i, ...].unsqueeze(1)), cur_dir, "recons_mag.gif")  # (T, H, W) -> (T, 1, H, W)
+            save_vol_as_gif(torch.angle(preds[i, ...].unsqueeze(1)), cur_dir, "recons_phase.gif")
+
+    def configure_optimizers(self):
+        opt_siren, scheduler_siren = load_optimizer(self.config["optimization"]["siren"], self.siren)
+        opt_siren_dict = {
+            "optimizer": opt_siren
+        }
+        if scheduler_siren is not None:
+            opt_siren_dict.update({
+                "lr_scheduler": scheduler_siren
+            })
+
+        return opt_siren_dict
+    
