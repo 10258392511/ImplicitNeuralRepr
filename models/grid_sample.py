@@ -19,10 +19,12 @@ class GridSample(nn.Module):
         self.low_res_imag = nn.parameter.Parameter(low_res_imag)
     
     def _shared_forward(self, x: torch.Tensor, low_res: nn.parameter.Parameter):
-        # x: (H, W, 2) or (T, H, W, 3)
-        x = x.unsqueeze(0)  # (1, H, W, 2) or (1, T, H, W, 3)
-        x_out = F.grid_sample(low_res, x)  # (1, C, H, W) or (1, C, T, H, W)
-        x_out = x_out.squeeze(0)  # (C, H, W) or (C, T, H, W)
+        # x: (B, H, W, 2) or (B, T, H, W, 3), (y, x) or (t, y, x)
+        x = torch.flip(x, dims=(-1,))
+        # x = x.unsqueeze(0)  # (1, H, W, 2) or (1, T, H, W, 3)
+        # x = x[..., ::-1]  # (B, H, W, 2) or (B, T, H, W, 3)
+        x_out = F.grid_sample(low_res, x, align_corners=True)  # (B, C, H, W) or (B, C, T, H, W)
+        # x_out = x_out.squeeze(0)  # (C, H, W) or (C, T, H, W)
         
         return x_out
     
