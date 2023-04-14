@@ -184,4 +184,3 @@ class SpatialTemporalTrainer(BaseTrainer):
         }
         
         return opt_dict_all
-  

@@ -1,9 +1,9 @@
 import numpy as np
 import torch
 
-from torch.utils.data import Dataset, Subset, DataLoader
+from torch.utils.data import Dataset, Subset, DataLoader, Sampler
 from pytorch_lightning import LightningDataModule
-from typing import Union, Tuple, List, Sequence
+from typing import Union, Tuple, List, Sequence, Optional
 
 
 class CoordDataset(Dataset):
@@ -197,3 +197,81 @@ class MetaCoordDM(LightningDataModule):
         Used in a callback to update (resampling) training DataLoader.
         """
         self.meta_ds.update_subsets()
+
+
+class AligningSampler(Sampler):
+    """
+    E.g, iterate 25 samples in 11 steps. 25 = 10 * 2 + 5 where 2 = 25 % (11 - 1). Thus the first batch_size is 5,
+    and the rest are 2. 
+    """
+    def __init__(self, num_samples: int, num_steps: int):
+        assert num_steps <= num_samples, f"num_steps = {num_steps}, num_samples = {num_samples}"
+        self.num_samples = num_samples
+        self.num_steps = num_steps
+        self.first_batch_size = self.num_samples % (self.num_steps - 1)
+        self.rest_batch_size = self.num_samples // self.num_steps
+        if self.first_batch_size == 0:
+            self.first_batch_size = self.rest_batch_size
+        self.current_idx = 0
+
+    def __len__(self):
+        return self.num_steps
+    
+    def __iter__(self):
+        yield torch.arange(self.first_batch_size)
+        self.current_idx += self.first_batch_size
+        while self.current_idx < self.num_samples:
+            yield torch.arange(self.current_idx, self.current_idx + self.rest_batch_size)
+            self.current_idx += self.rest_batch_size
+
+
+class WrapperDM(LightningDataModule):
+    """
+    Equivalent as zip(data_loader...)
+    """
+    def __init__(self, ds_collection: Sequence[Dataset], batch_size_collection: Sequence[int], num_samples_collection: Sequence[int], pred_ds: Dataset, pred_batch_size: int, num_workers: int = 0):
+        """
+        batch_size_collections: [None..., batch_size, None...]; only one batch_size is specified, and the rest DataLoaders are controlled by a Sampler
+        """
+        self.ds_collection = ds_collection
+        self.batch_size_collection = batch_size_collection
+        self.num_samples_collection = num_samples_collection
+        for ds, batch_size in zip(self.ds_collection, self.batch_size_collection):
+            if batch_size is not None:
+                self.num_steps = np.ceil(len(ds) / batch_size).astype(int)
+                break
+        assert self.num_steps is not None
+        self.pred_ds = pred_ds
+        self.pred_batch_size = pred_batch_size
+        self.num_workers = num_workers
+        self.ds_resampled = None
+        self.resample()  # set .ds_resampled here
+    
+    def prepare_data(self) -> None:
+        return super().prepare_data()
+    
+    def setup(self, stage: Optional[str] = None) -> None:
+        return super().setup(stage)
+    
+    def train_dataloader(self):
+        data_loaders = []
+        for ds, batch_size in zip(self.ds_resampled, self.batch_size_collection):
+            # shuffle: by .resample()
+            if batch_size is not None:
+                data_loaders.append(DataLoader(ds, batch_size, num_workers=self.num_workers, pin_memory=True))
+            else:
+                sampler = AligningSampler(len(ds), self.num_steps)
+                data_loaders.append(DataLoader(ds, batch_sampler=sampler, pin_memory=True))
+
+        return data_loaders
+
+    def predict_dataloader(self):
+        pred_loader = DataLoader(self.pred_ds, self.pred_batch_size, num_workers=self.num_workers, pin_memory=True)
+
+        return pred_loader
+
+    def resample(self):
+        self.ds_resampled = []
+        for ds, num_samples in zip(self.ds_collection, self.num_samples_collection):
+            indices = torch.randperm(len(ds))[:num_samples]
+            self.ds_resampled.append(Subset(ds, indices))

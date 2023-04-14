@@ -2,7 +2,7 @@ import torch
 import os
 
 from .cine import load_cine
-from .coord import MetaCoordDM, CoordDataset
+from .coord import MetaCoordDM, CoordDataset, WrapperDM
 from .coord_datasets_separate import Spatial2DTimeCoordDataset, Temporal2DTimeCoordDataset, Spatial2DTimeRegCoordDataset, Temporal2DTimeRegCoordDataset
 from monai.transforms import Resize as monai_Resize
 from typing import Sequence, Union
