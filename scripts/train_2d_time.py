@@ -15,8 +15,9 @@ import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 from ImplicitNeuralRepr.configs import load_config
 from ImplicitNeuralRepr.datasets import (
     load_data, 
-    CoordDataset, 
-    MetaCoordDM, 
+    Spatial2DTimeCoordDataset,
+    Temporal2DTimeCoordDataset,
+    WrapperDM,
     add_phase
 )
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
@@ -41,7 +42,7 @@ if __name__ == "__main__":
     parser.add_argument("--cine_ds_type", default="2d+time")
     parser.add_argument("--seed", type=int, default=0)
 
-    parser.add_argument("--batch_size", type=int, default=1024)
+    parser.add_argument("--batch_size", type=int, default=1024)  # for temporal_loader
     parser.add_argument("--num_workers", type=int, default=0)
 
     parser.add_argument("--task_name", default="2d+time")
@@ -56,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_epochs", type=int, default=1000)
     parser.add_argument("--val_interval", type=int, default=50)
     parser.add_argument("--if_train", action="store_true")
+    parser.add_argument("--if_debug", action="store_true")
     parser.add_argument("--notes", default="no extra notes")
 
     args_dict = vars(parser.parse_args())
@@ -80,17 +82,34 @@ if __name__ == "__main__":
     img_complex = add_phase(img[:, None, ...], init_shape=(5, 5, 5), seed=args_dict["seed"], mode="2d+time")
     img_complex = img_complex.squeeze(1)  # (T, H, W)
     T, H, W = img_complex.shape
-    spatial_ds = CoordDataset((T, H, W), (1, 2))
-    temporal_ds = CoordDataset((T, H, W), (0,))
-    dm_params = {
-    "batch_size": args_dict["batch_size"],
-    "num_workers": args_dict["num_workers"]
-    }
-    dm = MetaCoordDM(
-        dm_params, 
-        [spatial_ds, temporal_ds], 
-        [len(spatial_ds), len(temporal_ds)], 
-        spatial_ds
+    # spatial_ds = CoordDataset((T, H, W), (1, 2))
+    # temporal_ds = CoordDataset((T, H, W), (0,))
+    # dm_params = {
+    # "batch_size": args_dict["batch_size"],
+    # "num_workers": args_dict["num_workers"]
+    # }
+    # dm = MetaCoordDM(
+    #     dm_params, 
+    #     [spatial_ds, temporal_ds], 
+    #     [len(spatial_ds), len(temporal_ds)], 
+    #     spatial_ds
+    # )
+
+    in_shape = (T, H, W)
+    spatial_ds = Spatial2DTimeCoordDataset(in_shape)
+    temporal_ds = Temporal2DTimeCoordDataset(in_shape)
+    ds_collection = [spatial_ds, temporal_ds]
+    batch_size_collection = [None, 1024]
+    num_samples_collection = list(map(lambda ds : len(ds), ds_collection))
+    pred_ds = spatial_ds
+    pred_batch_size = args_dict["batch_size"]
+    dm = WrapperDM(
+        ds_collection,
+        batch_size_collection,
+        num_samples_collection,
+        pred_ds,
+        pred_batch_size,
+        args_dict["num_workers"]
     )
 
     torch.save(img_complex, os.path.join(args_dict["output_dir"], "original.pt"))
@@ -172,15 +191,23 @@ if __name__ == "__main__":
     }
     train_2d_time_callback = Train2DTimeCallack(train_2d_time_callback_params)
     callbacks.append(train_2d_time_callback)
-    
-    trainer = Trainer(
-        accelerator="gpu",
-        devices=1,
-        logger=logger,
-        check_val_every_n_epoch=args_dict["val_interval"],
-        max_epochs=args_dict["num_epochs"],
-        callbacks=callbacks
-    )
+
+    if args_dict["if_debug"]:
+        trainer = Trainer(
+            accelerator="gpu",
+            devices=1,
+            callbacks=callbacks,
+            fast_dev_run=3
+        )
+    else:
+        trainer = Trainer(
+            accelerator="gpu",
+            devices=1,
+            logger=logger,
+            check_val_every_n_epoch=args_dict["val_interval"],
+            max_epochs=args_dict["num_epochs"],
+            callbacks=callbacks
+        )
     if args_dict["if_train"]:
         trainer.fit(lit_model, datamodule=dm)
     

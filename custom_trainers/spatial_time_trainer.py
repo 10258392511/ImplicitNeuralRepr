@@ -87,7 +87,7 @@ class SpatialTemporalTrainer(BaseTrainer):
         t_vals = x_coord[:, 0, 0, 0]  # (B,)
         t_inds = (t_vals + 1) / 2 * (self.T - 1)
         t_inds = t_inds.long()
-        s_gt = self.measurement[..., t_inds, ...]  # (..., T, H, W, num_sens) -> (..., B', H, W, num_sens)
+        s_gt = self.measurement[..., t_inds, :, :, :]  # (..., T, H, W, num_sens) -> (..., B', H, W, num_sens)
         
         siren_img = self.siren(x_coord).squeeze(-1)  # (B, H, W)
         x_coord_grid_sample_in = x_coord.unsqueeze(1)  # (B, T=1, H, W, 3)

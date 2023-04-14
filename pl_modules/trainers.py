@@ -130,6 +130,7 @@ class Train2DTime(LightningModule):
         self.params = params
         self.config = config
         self.in_shape = config["transforms"]["dc"]["in_shape"]  # (T, H, W)
+        self.T, self.H, self.W = self.in_shape
         self.siren = siren
         self.grid_sample = grid_sample
         self.measurement = measurement  # img: (T, H, W)
@@ -145,48 +146,51 @@ class Train2DTime(LightningModule):
         #     "reg_metric": reg_metric 
         # })
     
-    def collate_pred(self, pred_siren: torch.Tensor, pred_grid_sample: torch.Tensor) -> torch.Tensor:
-        pred = pred_siren * self.params["siren_weight"] + pred_grid_sample * self.params["grid_sample_weight"]
+    def __dc_step(self, batch, if_pred=False):
+        """
+        Shared with .predict(.)
+        """
+        x_coord = batch
+        # x_coord = x_coord.float()  # (B, H, W, 3)
+        t_vals = x_coord[:, 0, 0, 0]  # (B,)
+        t_inds = (t_vals + 1) / 2 * (self.T - 1)
+        t_inds = t_inds.long()
+        s_gt = self.measurement[..., t_inds, :, :, :]  # (..., T, H, W, num_sens) -> (..., B', H, W, num_sens)
         
-        return pred 
+        siren_img = self.siren(x_coord).squeeze(-1)  # (B, H, W)
+        x_coord_grid_sample_in = x_coord.unsqueeze(1)  # (B, T=1, H, W, 3)
+        grid_sample_img = self.grid_sample(x_coord_grid_sample_in).reshape(*siren_img.shape)  # (B, C=1, T=1, H, W) -> (B, H, W)
+        img = siren_img * self.params["siren_weight"] + grid_sample_img * self.params["grid_sample_weight"]
+        if if_pred:
+            # (B, H, W)
+            return img.detach()
+        dc_loss = self.dc_loss(img, s_gt, t_inds)
+        self.dc_metric(img, s_gt, t_inds)
+
+        return dc_loss
+    
+    def __reg_step(self, batch):
+        x_coord = batch
+        x_coord = x_coord.float()  # (B, T, 3)
+        
+        siren_img = self.siren(x_coord).squeeze(-1)  # (B, T)
+        B, T, D = x_coord.shape
+        x_coord_grid_sample_in = x_coord.reshape(B, T, 1, 1, D)  # (B, T, H=1, W=1, 3)
+        grid_sample_img = self.grid_sample(x_coord_grid_sample_in).reshape(siren_img.shape)  # (B, C=1, T, H=1, W=1) -> (B, T)
+        img = siren_img * self.params["siren_weight"] + grid_sample_img * self.params["grid_sample_weight"]
+        reg_loss = self.reg_loss(img, self.params["lamda_reg"])
+        self.reg_metric(img, self.params["lamda_reg"])
+
+        return reg_loss
     
     def training_step(self, batch, batch_idx, optimizer_idx):
         """
-        batch: (B, H * W, 3), (B, T, 3), (B, 2); coord: (t, y, x)
+        batch: (B1, H, W, 3), (B2, T, 3)
         """
-        T, H, W = self.in_shape
-        x_s, x_t, mask = batch
-        dc_loss, reg_loss = 0., 0.
-
-        x_s = x_s[mask[:, 0], ...]  # (B', H * W, 3)
-        if x_s.shape[0] > 0:
-            x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 3)
-            pred_siren = self.siren(x_s).squeeze(-1)  # (B', H, W)
-            pred_grid_sample = self.grid_sample(x_s).squeeze(0)  # (1, B', H, W) -> (B', H, W)
-            pred_s = self.collate_pred(pred_siren, pred_grid_sample)  # (B', H, W)
-
-            # x_s: (B', H, W, 3); # coord order: (t, y, x)
-            t_inds = torch.round((x_s[:, 0, 0, 0] + 1) / 2 * (T - 1))  # (B,); each sample of shape (H, W, 3) has the same t
-            t_inds = t_inds.long()
-            measurement_t_slices = self.measurement[..., t_inds, :, :, :]  # .measurement: (..., T, H, W, num_sens) -> (..., B', H, W, num_sens)
-
-            dc_loss = self.dc_loss(pred_s, measurement_t_slices, t_inds)
-            dc_metric = self.dc_metric(pred_s, measurement_t_slices, t_inds)
-
-        x_t = x_t[mask[:, 1], ...]  # (B', T, 3)
-        if x_t.shape[0] > 0:
-            pred_siren = self.siren(x_t).squeeze(-1)  # (B', T)
-            x_t = rearrange(x_t, "(H W) T D -> T H W D", H=1)  # dummy spatial shape: (T, 1, B', 3); all coord (resampling) info has been encoded in the last dim
-            pred_grid_sample = self.grid_sample(x_t)  # (1, T, 1, B')
-            pred_grid_sample = rearrange(pred_grid_sample, "C T H W -> (C H W) T", C=pred_grid_sample.shape[0])  # (B', T)
-            pred_t = self.collate_pred(pred_siren, pred_grid_sample)
-        
-            reg_loss = self.reg_loss(pred_t, self.params["lamda_reg"])
-            reg_metric = self.reg_metric(pred_t, self.params["lamda_reg"])
-
-        loss = reg_loss
-        if dc_loss > 0:
-            loss = loss + dc_loss
+        x_s, x_t = batch
+        dc_loss = self.__dc_step(x_s)
+        reg_loss = self.__reg_step(x_t)
+        loss = dc_loss + reg_loss
 
         # logging
         log_dict = {
@@ -213,13 +217,8 @@ class Train2DTime(LightningModule):
         self.reg_metric.reset()
 
     def predict_step(self, batch, batch_idx):
-        # batch: (B, H * W, 3)
-        T, H, W = self.in_shape
-        x_s = batch
-        x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 3)
-        pred_siren = self.siren(x_s).squeeze(-1)  # (B', H, W)
-        pred_grid_sample = self.grid_sample(x_s).squeeze(0)  # (1, B', H, W) -> (B', H, W)
-        pred_s = self.collate_pred(pred_siren, pred_grid_sample)  # (B', H, W)
+        # batch: (B, H, W, 3)
+        pred_s = self.__dc_step(batch, if_pred=True)  # (B, H, W)
 
         return pred_s
     

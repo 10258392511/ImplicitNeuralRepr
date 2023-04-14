@@ -69,23 +69,33 @@ class Train2DTimeCallack(Callback):
     @torch.no_grad()
     def on_train_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         self.counter += 1
+        trainer.datamodule.resample()
+
         if self.counter % self.params["save_interval"] != 0 and self.counter != trainer.max_epochs - 1:
             return
         # preds = trainer.predict(pl_module, datamodule=trainer.datamodule)  # [(B, H, W)...]
         preds = []
-        siren = pl_module.siren.to(ptu.DEVICE)
-        grid_sample = pl_module.grid_sample.to(ptu.DEVICE)
-        siren.eval()
-        grid_sample.eval()
+        # siren = pl_module.siren.to(ptu.DEVICE)
+        # grid_sample = pl_module.grid_sample.to(ptu.DEVICE)
+        # siren.eval()
+        # grid_sample.eval()
+
+        all_models = [pl_module.siren, pl_module.grid_sample]
+        for model_iter in all_models:
+            model_iter.to(ptu.DEVICE)
+            model_iter.eval()
+        if_train_dict = {model_iter: model_iter.training for model_iter in all_models}
 
         for batch in trainer.datamodule.predict_dataloader():
-            T, H, W = pl_module.in_shape
-            x_s = batch
+            # T, H, W = pl_module.in_shape
+            x_s = batch  # (B, H, W, 3)
             x_s = x_s.to(ptu.DEVICE)
-            x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 3)
-            pred_siren = siren(x_s).squeeze(-1)  # (B', H, W)
-            pred_grid_sample = grid_sample(x_s).squeeze(0)  # (1, B', H, W) -> (B', H, W)
-            pred_s = pl_module.collate_pred(pred_siren, pred_grid_sample)  # (B', H, W)
+            # x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 3)
+            # pred_siren = siren(x_s).squeeze(-1)  # (B', H, W)
+            # pred_grid_sample = grid_sample(x_s).squeeze(0)  # (1, B', H, W) -> (B', H, W)
+            # pred_s = pl_module.collate_pred(pred_siren, pred_grid_sample)  # (B', H, W)
+            
+            pred_s = pl_module.predict_step(x_s, None)
             preds.append(pred_s)
 
         pred = pl_module.pred2vol(preds).unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
@@ -98,6 +108,12 @@ class Train2DTimeCallack(Callback):
         duration = pred.shape[0]  # set duration equal to "pred"
         save_vol_as_gif(torch.abs(low_res), save_dir=self.params["save_dir"], filename=f"mag_low_res_{self.counter + 1}.gif", duration=duration)
         save_vol_as_gif(torch.angle(low_res), save_dir=self.params["save_dir"], filename=f"phase_low_res_{self.counter + 1}.gif", duration=duration)
+
+        for model_iter in all_models:
+            if if_train_dict[model_iter]:
+                model_iter.train()
+            else:
+                model_iter.eval()
 
 
 class Train2DTimeRegCallack(Callback):

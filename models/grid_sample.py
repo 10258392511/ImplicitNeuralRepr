@@ -21,10 +21,10 @@ class GridSample(nn.Module):
     def _shared_forward(self, x: torch.Tensor, low_res: nn.parameter.Parameter):
         # x: (B, H, W, 2) or (B, T, H, W, 3), (y, x) or (t, y, x)
         x = torch.flip(x, dims=(-1,))
-        # x = x.unsqueeze(0)  # (1, H, W, 2) or (1, T, H, W, 3)
-        # x = x[..., ::-1]  # (B, H, W, 2) or (B, T, H, W, 3)
-        x_out = F.grid_sample(low_res, x, align_corners=True)  # (B, C, H, W) or (B, C, T, H, W)
-        # x_out = x_out.squeeze(0)  # (C, H, W) or (C, T, H, W)
+        expand_size = -torch.ones((x.dim())).long()
+        expand_size[0] = x.shape[0]
+        expand_size = expand_size.tolist()
+        x_out = F.grid_sample(low_res.expand(*expand_size), x, align_corners=True)  # (B, C, H, W) or (B, C, T, H, W)
         
         return x_out
     
