@@ -155,7 +155,7 @@ class Train2DTime(LightningModule):
         t_vals = x_coord[:, 0, 0, 0]  # (B,)
         t_inds = (t_vals + 1) / 2 * (self.T - 1)
         t_inds = t_inds.long()
-        s_gt = self.measurement[..., t_inds, :, :, :]  # (..., T, H, W, num_sens) -> (..., B', H, W, num_sens)
+        s_gt = self.measurement[..., t_inds, :, :, :]  # (..., T, H, W, num_sens) -> (..., B, H, W, num_sens)
         
         siren_img = self.siren(x_coord).squeeze(-1)  # (B, H, W)
         x_coord_grid_sample_in = x_coord.unsqueeze(1)  # (B, T=1, H, W, 3)
@@ -422,4 +422,123 @@ class Train2DTimeReg(LightningModule):
             })
 
         return opt_siren_dict
+
+
+class Train2DTimeExplicitReg(LightningModule):
+    def __init__(self, siren: nn.Module, grid_sample: nn.Module, measurement: torch.Tensor, config: dict,  params: dict):
+        """
+        params: siren_weight, grid_sample_weight
+        """
+        super().__init__()
+        self.params = params
+        self.config = config
+        self.in_shape = config["transforms"]["dc"]["in_shape"]  # (T, H, W)
+        self.T, self.H, self.W = self.in_shape
+        self.siren = siren
+        self.grid_sample = grid_sample
+        self.measurement = measurement  # img: (T, H, W)
+        dc_lin_tfm = load_linear_transform("2d+time", "dc")
+        self.dc_loss = DCLoss(dc_lin_tfm)
+        reg_lin_tfm = load_linear_transform("2d+time", "reg")
+        self.reg_loss = RegLoss(reg_lin_tfm)
+        self.dc_metric, self.reg_metric = DCLossMetric(dc_lin_tfm), RegLossMetric(reg_lin_tfm)
+
+    def __dc_step(self, batch, if_pred=False):
+        if if_pred:
+            x_s = batch
+        else:
+            x_s, lam_s = batch  # (B, H, W, 4), (B,); (lam, t, y, x)
+        t_vals = x_s[:, 0, 0, 1]  # (B,)
+        t_inds = (t_vals + 1) / 2 * (self.T - 1)
+        t_inds = t_inds.long()
+        s_gt = self.measurement[..., t_inds, :, :, :]  # (..., T, H, W, num_sens) -> (..., B, H, W, num_sens)
+
+        siren_img = self.siren(x_s).squeeze(-1)  # (B, H, W)
+        x_s_grid_sample_in = x_s.unsqueeze(1)  # (B, T=1, H, W, 4)
+        grid_sample_img = self.grid_sample(x_s_grid_sample_in[..., 1:]).reshape(siren_img.shape)  # (B, C=1, T=1, H, W) -> (B, H, W)
+        img = siren_img * self.params["siren_weight"] + grid_sample_img * self.params["grid_sample_weight"]
+        if if_pred:
+            return img.detach()
+        dc_loss = self.dc_loss(img, s_gt, t_inds)
+        self.dc_metric(img, s_gt, t_inds)
+
+        return dc_loss
+
+    def __reg_step(self, batch):
+        x_t, lam_t = batch  # (B, T, 4), (B,)
+
+        siren_img = self.siren(x_t).squeeze(-1)  # (B, T)
+        B, T, D = x_t.shape
+        x_t_grid_sample_in = x_t.reshape(B, T, 1, 1, D)  # (B, T, H=1, W=1, 4)
+        grid_img = self.grid_sample(x_t_grid_sample_in[..., 1:]).reshape(siren_img.shape)  # (B, C=1, T, H=1, W=1) -> (B, T)
+        img = siren_img + grid_img
+        lam_t = lam_t.unsqueeze(1)  # (B, 1)
+        reg_loss = self.reg_loss(img * lam_t, 1.)
+        self.reg_metric(img * lam_t, 1.)
+
+        return reg_loss
     
+    def training_step(self, batch, batch_idx, optimizer_idx):
+        batch_s, batch_t = batch
+        dc_loss = self.__dc_step(batch_s)
+        reg_loss = self.__reg_step(batch_t)
+        loss = dc_loss + reg_loss
+
+        # logging
+        log_dict = {
+            "loss": loss,
+            "dc_loss": dc_loss,
+            "reg_loss": reg_loss
+        }
+        self.log_dict(log_dict, prog_bar=True, on_step=True)
+
+        return loss
+    
+    def on_train_epoch_end(self) -> None:
+        dc_loss = self.dc_metric.compute()
+        reg_loss = self.reg_metric.compute()
+        loss = dc_loss + reg_loss
+        log_dict = {
+            "epoch_loss": loss,
+            "epoch_dc_loss": dc_loss,
+            "epoch_reg_loss": reg_loss
+        }
+        self.log_dict(log_dict, prog_bar=True, on_epoch=True)
+
+        self.dc_metric.reset()
+        self.reg_metric.reset()
+
+    def predict_step(self, batch, batch_idx):
+        # batch: (B, H, W, 4)
+        pred_s = self.__dc_step(batch, if_pred=True)  # (B, H, W)
+
+        return pred_s
+    
+    @staticmethod
+    def pred2vol(preds: List[torch.Tensor]) -> torch.Tensor:
+        # >= 2 dimensions for indices: use coord_ds.idx2sub(.); 2D + time: only 1-dim index (T)
+        # preds: list[(B', H, W)]
+        pred = torch.cat(preds, dim=0)  # (T, H, W)
+
+        return pred
+
+    def configure_optimizers(self):
+        opt_siren, scheduler_siren = load_optimizer(self.config["optimization"]["siren"], self.siren)
+        opt_grid_sample, scheduler_grid_sample = load_optimizer(self.config["optimization"]["grid_sample"], self.grid_sample)
+        opt_siren_dict = {
+            "optimizer": opt_siren
+        }
+        if scheduler_siren is not None:
+            opt_siren_dict.update({
+                "lr_scheduler": scheduler_siren
+            })
+        
+        opt_grid_sample_dict = {
+            "optimizer": opt_grid_sample
+        }
+        if scheduler_grid_sample is not None:
+            opt_grid_sample_dict.update({
+                "lr_scheduler": scheduler_grid_sample
+            })
+        
+        return opt_siren_dict, opt_grid_sample_dict

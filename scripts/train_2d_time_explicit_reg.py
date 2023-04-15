@@ -15,15 +15,16 @@ import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 from ImplicitNeuralRepr.configs import load_config
 from ImplicitNeuralRepr.datasets import (
     load_data, 
-    Spatial2DTimeCoordDataset,
-    Temporal2DTimeCoordDataset,
+    Spatial2DTimeRegCoordDataset,
+    Temporal2DTimeRegCoordDataset,
+    Spatial2DTimeRegCoordPredDataset,
     WrapperDM,
     add_phase
 )
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
 from ImplicitNeuralRepr.models import load_model, GridSample, reload_model
 from ImplicitNeuralRepr.linear_transforms import load_linear_transform
-from ImplicitNeuralRepr.pl_modules.trainers import Train2DTime
+from ImplicitNeuralRepr.pl_modules.trainers import Train2DTimeExplicitReg
 from pytorch_lightning.callbacks import ModelCheckpoint
 from ImplicitNeuralRepr.pl_modules.callbacks import Train2DTimeCallack
 from pytorch_lightning import Trainer
@@ -33,8 +34,8 @@ from datetime import datetime
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--log_dir", default="../2d_time_logs")
-    parser.add_argument("--output_dir", default="../outputs_implicit_neural_repr/2d_time")
+    parser.add_argument("--log_dir", default="../2d_time_explicit_reg_logs")
+    parser.add_argument("--output_dir", default="../outputs_implicit_neural_repr/2d_time_explicit_reg")
 
     parser.add_argument("--cine_ds_name", default="CINE127")
     parser.add_argument("--cine_idx", type=int, default=10)
@@ -45,14 +46,15 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1024)  # for temporal_loader
     parser.add_argument("--num_workers", type=int, default=0)
 
-    parser.add_argument("--task_name", default="2d+time")
+    parser.add_argument("--task_name", default="2d+time+explicit_reg")
     parser.add_argument("--noise_std", type=float, default=1e-3)
 
     parser.add_argument("--kernel_shape", type=int, nargs="+", default=[1, 1, 12, 32, 32])
+    parser.add_argument("--lam_min", type=int, default=-3)
+    parser.add_argument("--lam_max", type=int, default=0)
 
     parser.add_argument("--siren_weight", type=float, default=1.)
     parser.add_argument("--grid_sample_weight", type=float, default=1.)
-    parser.add_argument("--lamda_reg", type=float, default=0.001)
 
     parser.add_argument("--num_epochs", type=int, default=1000)
     parser.add_argument("--val_interval", type=int, default=50)
@@ -84,12 +86,13 @@ if __name__ == "__main__":
     T, H, W = img_complex.shape
 
     in_shape = (T, H, W)
-    spatial_ds = Spatial2DTimeCoordDataset(in_shape)
-    temporal_ds = Temporal2DTimeCoordDataset(in_shape)
+    lam_tfm = lambda lam : 10 ** lam
+    spatial_ds = Spatial2DTimeRegCoordDataset(in_shape, args_dict["lam_min"], args_dict["lam_max"], lam_tfm)
+    temporal_ds = Temporal2DTimeRegCoordDataset(in_shape, args_dict["lam_min"], args_dict["lam_max"], lam_tfm)
     ds_collection = [spatial_ds, temporal_ds]
     batch_size_collection = [None, args_dict["batch_size"]]
     num_samples_collection = list(map(lambda ds : len(ds), ds_collection))
-    pred_ds = spatial_ds
+    pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, args_dict["lam_min"])
     pred_batch_size = args_dict["batch_size"]
     dm = WrapperDM(
         ds_collection,
@@ -135,12 +138,11 @@ if __name__ == "__main__":
     )
 
     lit_model_params = {
-        "lamda_reg": args_dict["lamda_reg"],
         "siren_weight": args_dict["siren_weight"],
         "grid_sample_weight": args_dict["grid_sample_weight"]
     }
 
-    lit_model = Train2DTime(
+    lit_model = Train2DTimeExplicitReg(
         siren, 
         grid_sample, 
         measurement.to(ptu.DEVICE), 
@@ -173,12 +175,12 @@ if __name__ == "__main__":
     )
     callbacks.append(model_ckpt)
 
-    train_2d_time_callback_params = {
+    train_callback_params = {
         "save_dir": args_dict["output_dir"],
         "save_interval": args_dict["val_interval"]
     }
-    train_2d_time_callback = Train2DTimeCallack(train_2d_time_callback_params)
-    callbacks.append(train_2d_time_callback)
+    train_callback = Train2DTimeCallack(train_callback_params)
+    callbacks.append(train_callback)
 
     if args_dict["if_debug"]:
         trainer = Trainer(
@@ -199,8 +201,22 @@ if __name__ == "__main__":
     if args_dict["if_train"]:
         trainer.fit(lit_model, datamodule=dm)
     
-    preds = trainer.predict(lit_model, datamodule=dm)
-    pred = lit_model.pred2vol(preds).unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
-    torch.save(pred.detach().cpu().squeeze(1), os.path.join(args_dict["output_dir"], f"reconstructions.pt"))
-    save_vol_as_gif(torch.abs(pred), save_dir=args_dict["output_dir"], filename=f"recons_mag.gif")
-    save_vol_as_gif(torch.angle(pred), save_dir=args_dict["output_dir"], filename=f"recons_phase.gif")
+    print("Predicting...")
+    for lam_iter in range(args_dict["lam_min"], args_dict["lam_max"]):
+        print(f"lam = {lam_iter}")
+        pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, lam_iter)
+        pred_batch_size = args_dict["batch_size"]
+        dm = WrapperDM(
+            ds_collection,
+            batch_size_collection,
+            num_samples_collection,
+            pred_ds,
+            pred_batch_size,
+            args_dict["num_workers"]
+        )
+        preds = trainer.predict(lit_model, datamodule=dm)
+        pred = lit_model.pred2vol(preds).unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
+        save_dir = os.path.join(args_dict["output_dir"], f"lam_{lam_iter: .3f}")
+        save_vol_as_gif(torch.abs(pred), save_dir=save_dir, filename=f"recons_mag.gif")
+        save_vol_as_gif(torch.angle(pred), save_dir=save_dir, filename=f"recons_phase.gif")
+        torch.save(pred.detach().cpu().squeeze(1), os.path.join(save_dir, f"reconstructions.pt"))

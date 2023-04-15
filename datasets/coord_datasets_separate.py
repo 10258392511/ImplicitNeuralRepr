@@ -119,4 +119,29 @@ class Temporal2DTimeRegCoordDataset(Dataset):
 
         # (H, W, 4)
         return sample, self.lam_grid_val[lam_idx]
+
+
+class Spatial2DTimeRegCoordPredDataset(Dataset):
+    """
+    (fixed lam, t, y, x) 
+    """
+    def __init__(self, in_shape: Sequence[int], lam: float):
+        super().__init__()
+        self.T, self.H, self.W = in_shape
+        yx_grid = torch.meshgrid(torch.linspace(-1, 1, self.H), torch.linspace(-1, 1, self.W), indexing="ij")
+        self.yx_grid = torch.stack(yx_grid, dim=-1)  # (H, W, 2)
+        self.t_grid = torch.linspace(-1, 1, self.T)
+        self.lam = lam
+    
+    def __len__(self):
+        return self.T
+    
+    def __getitem__(self, idx: int):
+        sample = torch.zeros((self.H, self.W, 4))
+        sample[..., -2:] = self.yx_grid
+        sample[..., 1] = self.t_grid[idx]
+        sample[..., 0] = self.lam
+
+        # (T, H, W)
+        return sample.float()
     

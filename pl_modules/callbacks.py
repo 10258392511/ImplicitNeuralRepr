@@ -53,7 +53,7 @@ class TrainSpatialCallack(Callback):
 
 class Train2DTimeCallack(Callback):
     """
-    Saves reconstructed images.
+    Saves reconstructed images. Also used for Train2DTimeExplicitReg
     """
     def __init__(self, params: dict):
         """
@@ -75,10 +75,6 @@ class Train2DTimeCallack(Callback):
             return
         # preds = trainer.predict(pl_module, datamodule=trainer.datamodule)  # [(B, H, W)...]
         preds = []
-        # siren = pl_module.siren.to(ptu.DEVICE)
-        # grid_sample = pl_module.grid_sample.to(ptu.DEVICE)
-        # siren.eval()
-        # grid_sample.eval()
 
         all_models = [pl_module.siren, pl_module.grid_sample]
         for model_iter in all_models:
@@ -90,11 +86,6 @@ class Train2DTimeCallack(Callback):
             # T, H, W = pl_module.in_shape
             x_s = batch  # (B, H, W, 3)
             x_s = x_s.to(ptu.DEVICE)
-            # x_s = rearrange(x_s, "B (H W) D -> B H W D", H=H)  # (B', H, W, 3)
-            # pred_siren = siren(x_s).squeeze(-1)  # (B', H, W)
-            # pred_grid_sample = grid_sample(x_s).squeeze(0)  # (1, B', H, W) -> (B', H, W)
-            # pred_s = pl_module.collate_pred(pred_siren, pred_grid_sample)  # (B', H, W)
-            
             pred_s = pl_module.predict_step(x_s, None)
             preds.append(pred_s)
 
@@ -155,4 +146,3 @@ class Train2DTimeRegCallack(Callback):
         preds = pl_module.pred2vol(preds)  # (Lambda, T, H, W)
         save_dir = os.path.join(self.params["save_dir"], f"epoch_{self.counter}")
         pl_module.save_preds(preds, save_dir)
-        
