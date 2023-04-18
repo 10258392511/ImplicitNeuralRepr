@@ -10,6 +10,10 @@ from .coord_datasets_separate import (
     Temporal2DTimeRegCoordDataset,
     Spatial2DTimeRegCoordPredDataset
 )
+from .spatial_time_reg import (
+    ZipDataset, 
+    ZipDM
+)
 from monai.transforms import Resize as monai_Resize
 from typing import Sequence, Union
 from einops import rearrange

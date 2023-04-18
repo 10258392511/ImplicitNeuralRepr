@@ -479,8 +479,26 @@ class Train2DTimeExplicitReg(LightningModule):
         return reg_loss
     
     def training_step(self, batch, batch_idx, optimizer_idx):
-        batch_s, batch_t = batch
-        dc_loss = self.__dc_step(batch_s)
+        ### using WrapperDM ###
+        # batch_s, batch_t = batch
+        #######################
+
+        ### using ZipDM ###
+        batch_s, batch_t, batch_lam, mask = batch  # (B, H, W, 4), (B, T, 4), (B,), (B,)
+        batch_s = (batch_s[mask], None)
+        batch_t = (batch_t, batch_lam)
+        ###################
+
+        ### using WrapperDM ###
+        # dc_loss = self.__dc_step(batch_s)
+        #######################
+
+        ### using ZipDM ###
+        if not torch.any(mask):
+            dc_loss = 0
+        else:
+            dc_loss = self.__dc_step(batch_s)
+        ##################
         reg_loss = self.__reg_step(batch_t)
         loss = dc_loss + reg_loss
 
