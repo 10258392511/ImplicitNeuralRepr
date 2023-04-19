@@ -14,6 +14,10 @@ from .spatial_time_reg import (
     ZipDataset, 
     ZipDM
 )
+from .simplified_sampling_datasets import (
+    SpatialTemporalSamplingDM,
+    SpatialTemporalRegSamplingDM
+)
 from monai.transforms import Resize as monai_Resize
 from typing import Sequence, Union
 from einops import rearrange
