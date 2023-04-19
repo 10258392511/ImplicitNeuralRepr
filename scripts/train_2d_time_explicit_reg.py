@@ -107,9 +107,10 @@ if __name__ == "__main__":
 
     in_shape = (T, H, W)
     lam_tfm = lambda lam : 10 ** lam
-    pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, args_dict["lam_min"])
-    pred_batch_size = args_dict["batch_size"]
     zip_ds = ZipDataset(in_shape, args_dict["lam_min"], args_dict["lam_max"], lam_tfm)
+    lam_grid = zip_ds.spatial_ds.lam_grid
+    pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, lam_grid[0])
+    pred_batch_size = args_dict["batch_size"]
     dm = ZipDM(
         zip_ds,
         args_dict["batch_size"],
@@ -217,7 +218,7 @@ if __name__ == "__main__":
         trainer.fit(lit_model, datamodule=dm)
     
     print("Predicting...")
-    for lam_iter in range(args_dict["lam_min"], args_dict["lam_max"]):
+    for lam_iter in lam_grid:
         print(f"lam = {lam_iter}")
         pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, lam_iter)
         pred_batch_size = args_dict["batch_size"]

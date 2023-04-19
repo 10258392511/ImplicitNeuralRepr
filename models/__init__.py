@@ -18,7 +18,9 @@ MODEL_NAME_MAP = {
 # task names: see CONFIG_PATHS from configs/__init__.py
 MODEL_RELOAD_PATHS = {
     "spatial": "spatial_logs/2023_03_17_21_52_38_197732",
-    "2d+time": "2d_time_logs/2023_03_23_00_09_34_717456",
+    "2d+time": "2d_time_logs/2023_03_23_00_09_34_717456",  # TODO: update this
+    # "2d+time+explicit_reg": "2d_time_explicit_reg_logs/ZipDM/2023_04_18_22_39_06_782108",  # Siren + GridSample
+    "2d+time+explicit_reg": "2d_time_explicit_reg_logs/ZipDM/2023_04_18_22_40_16_198175"  # Siren
 }
 
 
