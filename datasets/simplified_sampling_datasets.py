@@ -40,7 +40,7 @@ class SpatialTemporalSamplingDM(LightningDataModule):
         return super().setup(stage)
     
     def train_dataloader(self):
-        spatial_loader = DataLoader(self.spatial_subset, self.spatial_batch_size // 2, pin_memory=True, num_workers=0)
+        spatial_loader = DataLoader(self.spatial_subset, self.spatial_batch_size, pin_memory=True, num_workers=0)
         temporal_loader = DataLoader(self.temporal_subset, self.temporal_batch_size, pin_memory=True, num_workers=self.params["num_workers"])
 
         return [spatial_loader, temporal_loader]
