@@ -21,6 +21,7 @@ from ImplicitNeuralRepr.datasets import (
     WrapperDM,
     ZipDataset,
     ZipDM,
+    SpatialTemporalRegSamplingDM,
     add_phase
 )
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
@@ -105,19 +106,31 @@ if __name__ == "__main__":
     #     args_dict["num_workers"]
     # )
 
-    in_shape = (T, H, W)
+    # in_shape = (T, H, W)
+    # lam_tfm = lambda lam : 10 ** lam
+    # zip_ds = ZipDataset(in_shape, args_dict["lam_min"], args_dict["lam_max"], lam_tfm)
+    # lam_grid = zip_ds.spatial_ds.lam_grid
+    # pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, lam_grid[0])
+    # pred_batch_size = args_dict["batch_size"]
+    # dm = ZipDM(
+    #     zip_ds,
+    #     args_dict["batch_size"],
+    #     pred_ds,
+    #     pred_batch_size,
+    #     args_dict["num_workers"]
+    # )
+
     lam_tfm = lambda lam : 10 ** lam
-    zip_ds = ZipDataset(in_shape, args_dict["lam_min"], args_dict["lam_max"], lam_tfm)
-    lam_grid = zip_ds.spatial_ds.lam_grid
-    pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, lam_grid[0])
-    pred_batch_size = args_dict["batch_size"]
-    dm = ZipDM(
-        zip_ds,
-        args_dict["batch_size"],
-        pred_ds,
-        pred_batch_size,
-        args_dict["num_workers"]
-    )
+    dm_params = {
+        "in_shape": (T, H, W),
+        "lam_min": args_dict["lam_min"],
+        "lam_max": args_dict["lam_max"],
+        "lam_pred": -1.,
+        "pred_batch_size": args_dict["batch_size"],
+        "num_workers": args_dict["num_workers"]
+    }
+    dm = SpatialTemporalRegSamplingDM(dm_params, lam_tfm)
+    lam_grid = dm.spatial_ds.lam_grid
 
     torch.save(img_complex, os.path.join(args_dict["output_dir"], "original.pt"))
     save_vol_as_gif(torch.abs(img_complex.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="orig_mag.gif")  # (T, H, W) -> (T, 1, H, W)
@@ -185,7 +198,8 @@ if __name__ == "__main__":
     model_ckpt = ModelCheckpoint(
         dirpath=os.path.join(log_dir, "checkpoints"),
         filename="{epoch}_{loss: .2f}",
-        monitor="epoch_loss", 
+        # monitor="epoch_loss", 
+        monitor="loss",
         save_last=True,
         save_on_train_epoch_end=True
     )
@@ -220,8 +234,9 @@ if __name__ == "__main__":
     print("Predicting...")
     for lam_iter in lam_grid:
         print(f"lam = {lam_iter}")
-        pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, lam_iter)
-        pred_batch_size = args_dict["batch_size"]
+        
+        # pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, lam_iter)
+        # pred_batch_size = args_dict["batch_size"]
         # dm = WrapperDM(
         #     ds_collection,
         #     batch_size_collection,
@@ -230,13 +245,25 @@ if __name__ == "__main__":
         #     pred_batch_size,
         #     args_dict["num_workers"]
         # )
-        dm = ZipDM(
-            zip_ds,
-            args_dict["batch_size"],
-            pred_ds,
-            pred_batch_size,
-            args_dict["num_workers"]
-        )
+
+        # dm = ZipDM(
+        #     zip_ds,
+        #     args_dict["batch_size"],
+        #     pred_ds,
+        #     pred_batch_size,
+        #     args_dict["num_workers"]
+        # )
+
+        dm_params = {
+            "in_shape": (T, H, W),
+            "lam_min": args_dict["lam_min"],
+            "lam_max": args_dict["lam_max"],
+            "lam_pred": lam_iter,
+            "pred_batch_size": args_dict["batch_size"],
+            "num_workers": args_dict["num_workers"]
+        }
+        dm = SpatialTemporalRegSamplingDM(dm_params, lam_tfm)
+        
         preds = trainer.predict(lit_model, datamodule=dm)
         pred = lit_model.pred2vol(preds).unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
         save_dir = os.path.join(args_dict["output_dir"], f"lam_{lam_iter: .3f}")

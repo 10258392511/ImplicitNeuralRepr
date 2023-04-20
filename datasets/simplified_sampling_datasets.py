@@ -11,6 +11,7 @@ from .coord_datasets_separate import (
 from torch.utils.data import DataLoader, Subset
 from pytorch_lightning import LightningDataModule
 from collections import defaultdict
+from itertools import cycle
 from typing import Optional
 
 
@@ -25,10 +26,11 @@ class SpatialTemporalSamplingDM(LightningDataModule):
         self.temporal_ds = Temporal2DTimeCoordDataset(self.params["in_shape"])
         self.pred_ds = Spatial2DTimeCoordDataset(self.params["in_shape"])
         self.T, self.H, self.W = self.spatial_ds.T, self.spatial_ds.H, self.spatial_ds.W
-        self.spatial_batch_size = 1
+        self.spatial_batch_size = 16
         self.temporal_batch_size = int(np.ceil(self.spatial_batch_size * self.H * self.W / self.T))
         self.spatial_subset = None
         self.temporal_subset = None
+        # self.spatial_cycle = cycle(range(len(self.spatial_ds)))
         self.resample()
     
     def prepare_data(self) -> None:
@@ -38,7 +40,7 @@ class SpatialTemporalSamplingDM(LightningDataModule):
         return super().setup(stage)
     
     def train_dataloader(self):
-        spatial_loader = DataLoader(self.spatial_subset, self.spatial_batch_size, pin_memory=True, num_workers=1)
+        spatial_loader = DataLoader(self.spatial_subset, self.spatial_batch_size // 2, pin_memory=True, num_workers=0)
         temporal_loader = DataLoader(self.temporal_subset, self.temporal_batch_size, pin_memory=True, num_workers=self.params["num_workers"])
 
         return [spatial_loader, temporal_loader]
@@ -49,8 +51,9 @@ class SpatialTemporalSamplingDM(LightningDataModule):
         return loader
 
     def resample(self) -> None:
-        spatial_idx = np.random.randint(0, len(self.spatial_ds), (1,))
-        temporal_inds = np.random.choice(len(self.temporal_ds), (self.temporal_batch_size,), replace=False)
+        spatial_idx = np.random.randint(0, len(self.spatial_ds), (self.spatial_batch_size,))
+        # spatial_idx = [next(self.spatial_cycle)]
+        temporal_inds = np.random.choice(len(self.temporal_ds), (6 * self.temporal_batch_size,), replace=True)
         self.spatial_subset = Subset(self.spatial_ds, spatial_idx)
         self.temporal_subset = Subset(self.temporal_ds, temporal_inds)
 
@@ -73,6 +76,7 @@ class SpatialTemporalRegSamplingDM(LightningDataModule):
         self.__temporal_lam2idx()
         self.spatial_subset = None
         self.temporal_subset = None
+        self.spatial_cycle = cycle(range(len(self.spatial_ds)))
         self.resample()
     
     def __temporal_lam2idx(self):
@@ -88,7 +92,7 @@ class SpatialTemporalRegSamplingDM(LightningDataModule):
         return super().setup(stage)
     
     def train_dataloader(self):
-        spatial_loader = DataLoader(self.spatial_subset, self.spatial_batch_size, pin_memory=True, num_workers=1)
+        spatial_loader = DataLoader(self.spatial_subset, self.spatial_batch_size, pin_memory=True, num_workers=0)
         temporal_loader = DataLoader(self.temporal_subset, self.temporal_batch_size, pin_memory=True, num_workers=self.params["num_workers"])
 
         return [spatial_loader, temporal_loader]
@@ -99,7 +103,8 @@ class SpatialTemporalRegSamplingDM(LightningDataModule):
         return loader
     
     def resample(self):
-        spatial_idx = np.random.randint(0, len(self.spatial_ds))
+        # spatial_idx = np.random.randint(0, len(self.spatial_ds))
+        spatial_idx = next(self.spatial_cycle)
         lam, t = np.unravel_index(spatial_idx, (self.Lam, self.T))
         candidate_list = self._temporal_lam2idx[lam]
         temporal_inds = random.sample(candidate_list, self.temporal_batch_size)

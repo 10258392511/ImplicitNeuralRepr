@@ -10,6 +10,7 @@ if path not in sys.path:
 import argparse
 import torch
 import pickle
+import time
 import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from ImplicitNeuralRepr.configs import load_config
@@ -18,6 +19,7 @@ from ImplicitNeuralRepr.datasets import (
     Spatial2DTimeCoordDataset,
     Temporal2DTimeCoordDataset,
     WrapperDM,
+    SpatialTemporalSamplingDM,
     add_phase
 )
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
@@ -83,22 +85,29 @@ if __name__ == "__main__":
     img_complex = img_complex.squeeze(1)  # (T, H, W)
     T, H, W = img_complex.shape
 
-    in_shape = (T, H, W)
-    spatial_ds = Spatial2DTimeCoordDataset(in_shape)
-    temporal_ds = Temporal2DTimeCoordDataset(in_shape)
-    ds_collection = [spatial_ds, temporal_ds]
-    batch_size_collection = [None, args_dict["batch_size"]]
-    num_samples_collection = list(map(lambda ds : len(ds), ds_collection))
-    pred_ds = spatial_ds
-    pred_batch_size = args_dict["batch_size"]
-    dm = WrapperDM(
-        ds_collection,
-        batch_size_collection,
-        num_samples_collection,
-        pred_ds,
-        pred_batch_size,
-        args_dict["num_workers"]
-    )
+    # in_shape = (T, H, W)
+    # spatial_ds = Spatial2DTimeCoordDataset(in_shape)
+    # temporal_ds = Temporal2DTimeCoordDataset(in_shape)
+    # ds_collection = [spatial_ds, temporal_ds]
+    # batch_size_collection = [None, args_dict["batch_size"]]
+    # num_samples_collection = list(map(lambda ds : len(ds), ds_collection))
+    # pred_ds = spatial_ds
+    # pred_batch_size = args_dict["batch_size"]
+    # dm = WrapperDM(
+    #     ds_collection,
+    #     batch_size_collection,
+    #     num_samples_collection,
+    #     pred_ds,
+    #     pred_batch_size,
+    #     args_dict["num_workers"]
+    # )
+
+    dm_params = {
+        "in_shape": (T, H, W),
+        "pred_batch_size": args_dict["batch_size"],
+        "num_workers": args_dict["num_workers"]
+    }
+    dm = SpatialTemporalSamplingDM(dm_params)
 
     torch.save(img_complex, os.path.join(args_dict["output_dir"], "original.pt"))
     save_vol_as_gif(torch.abs(img_complex.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="orig_mag.gif")  # (T, H, W) -> (T, 1, H, W)
@@ -167,7 +176,8 @@ if __name__ == "__main__":
     model_ckpt = ModelCheckpoint(
         dirpath=os.path.join(log_dir, "checkpoints"),
         filename="{epoch}_{loss: .2f}",
-        monitor="epoch_loss", 
+        # monitor="epoch_loss",
+        monitor="loss",
         save_last=True,
         save_on_train_epoch_end=True
     )
@@ -197,7 +207,13 @@ if __name__ == "__main__":
             callbacks=callbacks
         )
     if args_dict["if_train"]:
+        time_start = time.time()
         trainer.fit(lit_model, datamodule=dm)
+        time_end = time.time()
+        time_duration = time_end - time_start
+        with open(os.path.join(args_dict["output_dir"], "args_dict.txt"), "a") as wf:
+            wf.write(f"training time: {time_duration}\n")
+
     
     preds = trainer.predict(lit_model, datamodule=dm)
     pred = lit_model.pred2vol(preds).unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
