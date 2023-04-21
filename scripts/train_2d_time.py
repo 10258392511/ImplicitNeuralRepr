@@ -44,7 +44,9 @@ if __name__ == "__main__":
     parser.add_argument("--cine_ds_type", default="2d+time")
     parser.add_argument("--seed", type=int, default=0)
 
-    parser.add_argument("--batch_size", type=int, default=1024)  # for temporal_loader
+    parser.add_argument("--spatial_batch_size", type=int, default=32)
+    parser.add_argument("--pred_batch_size", type=int, default=32)
+    parser.add_argument("--num_temporal_repeats", type=int, default=3)
     parser.add_argument("--num_workers", type=int, default=0)
 
     parser.add_argument("--task_name", default="2d+time")
@@ -55,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument("--siren_weight", type=float, default=1.)
     parser.add_argument("--grid_sample_weight", type=float, default=1.)
     parser.add_argument("--lamda_reg", type=float, default=0.001)
+    parser.add_argument("--if_ZF", action="store_true")
 
     parser.add_argument("--num_epochs", type=int, default=1000)
     parser.add_argument("--val_interval", type=int, default=50)
@@ -104,7 +107,9 @@ if __name__ == "__main__":
 
     dm_params = {
         "in_shape": (T, H, W),
-        "pred_batch_size": args_dict["batch_size"],
+        "spatial_batch_size": args_dict["spatial_batch_size"],
+        "pred_batch_size": args_dict["pred_batch_size"],
+        "num_temporal_repeats": args_dict["num_temporal_repeats"],
         "num_workers": args_dict["num_workers"]
     }
     dm = SpatialTemporalSamplingDM(dm_params)
@@ -149,12 +154,16 @@ if __name__ == "__main__":
         "grid_sample_weight": args_dict["grid_sample_weight"]
     }
 
+    zf_in = None
+    if args_dict["if_ZF"]:
+        zf_in = zf.to(ptu.DEVICE)
     lit_model = Train2DTime(
         siren, 
         grid_sample, 
         measurement.to(ptu.DEVICE), 
         config_dict, 
-        lit_model_params
+        lit_model_params,
+        zf_in
     )
 
     if not args_dict["if_train"]:
@@ -195,7 +204,8 @@ if __name__ == "__main__":
             accelerator="gpu",
             devices=1,
             callbacks=callbacks,
-            fast_dev_run=3
+            fast_dev_run=3,
+            reload_dataloaders_every_n_epochs=1
         )
     else:
         trainer = Trainer(
@@ -204,7 +214,8 @@ if __name__ == "__main__":
             logger=logger,
             check_val_every_n_epoch=args_dict["val_interval"],
             max_epochs=args_dict["num_epochs"],
-            callbacks=callbacks
+            callbacks=callbacks,
+            reload_dataloaders_every_n_epochs=1
         )
     if args_dict["if_train"]:
         time_start = time.time()

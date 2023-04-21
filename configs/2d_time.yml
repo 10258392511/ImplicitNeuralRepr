@@ -34,9 +34,9 @@ optimization:
   grid_sample:
     opt_name: "AdamW"
     opt_params: 
-      lr: !!float 5e-3
+      lr: !!float 1e-2
     scheduler_name: "StepLR"
     scheduler_params:
-      step_size: 1000
+      step_size: 50
       gamma: 0.5
   

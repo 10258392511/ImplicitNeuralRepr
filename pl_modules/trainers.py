@@ -21,7 +21,7 @@ from ImplicitNeuralRepr.utils.utils import (
 )
 from collections import defaultdict
 from einops import rearrange
-from typing import List
+from typing import List, Union
 
 
 class TrainSpatial(LightningModule):
@@ -122,7 +122,7 @@ class TrainSpatial(LightningModule):
 
 
 class Train2DTime(LightningModule):
-    def __init__(self, siren: nn.Module, grid_sample: nn.Module, measurement: torch.Tensor, config: dict,  params: dict):
+    def __init__(self, siren: nn.Module, grid_sample: nn.Module, measurement: torch.Tensor, config: dict,  params: dict, ZF: Union[None, torch.Tensor] = None):
         """
         params: lamda_reg, siren_weight, grid_sample_weight
         """
@@ -134,6 +134,7 @@ class Train2DTime(LightningModule):
         self.siren = siren
         self.grid_sample = grid_sample
         self.measurement = measurement  # img: (T, H, W)
+        self.ZF = ZF  # (T, H, W)
         dc_lin_tfm = load_linear_transform("2d+time", "dc")
         self.dc_loss = DCLoss(dc_lin_tfm)
         reg_lin_tfm = load_linear_transform("2d+time", "reg")
@@ -161,6 +162,10 @@ class Train2DTime(LightningModule):
         x_coord_grid_sample_in = x_coord.unsqueeze(1)  # (B, T=1, H, W, 3)
         grid_sample_img = self.grid_sample(x_coord_grid_sample_in).reshape(*siren_img.shape)  # (B, C=1, T=1, H, W) -> (B, H, W)
         img = siren_img * self.params["siren_weight"] + grid_sample_img * self.params["grid_sample_weight"]
+        
+        if self.ZF is not None:
+            img = img + self.ZF[t_inds, ...]
+        
         if if_pred:
             # (B, H, W)
             return img.detach()
@@ -178,6 +183,15 @@ class Train2DTime(LightningModule):
         x_coord_grid_sample_in = x_coord.reshape(B, T, 1, 1, D)  # (B, T, H=1, W=1, 3)
         grid_sample_img = self.grid_sample(x_coord_grid_sample_in).reshape(siren_img.shape)  # (B, C=1, T, H=1, W=1) -> (B, T)
         img = siren_img * self.params["siren_weight"] + grid_sample_img * self.params["grid_sample_weight"]
+        
+        if self.ZF is not None:
+            y_vals, x_vals = x_coord[:, 0, 1], x_coord[:, 0, 2]  # (B,) each
+            y_inds = (y_vals + 1) / 2 * (self.H - 1)
+            y_inds = y_inds.long()
+            x_inds = (x_vals + 1) / 2 * (self.W - 1)
+            x_inds = x_inds.long()
+            img = img + self.ZF[:, y_inds, x_inds].T  # (T, B) -> (B, T)
+        
         reg_loss = self.reg_loss(img, self.params["lamda_reg"])
         self.reg_metric(img, self.params["lamda_reg"])
 
@@ -426,7 +440,7 @@ class Train2DTimeReg(LightningModule):
 
 
 class Train2DTimeExplicitReg(LightningModule):
-    def __init__(self, siren: nn.Module, grid_sample: nn.Module, measurement: torch.Tensor, config: dict,  params: dict):
+    def __init__(self, siren: nn.Module, grid_sample: nn.Module, measurement: torch.Tensor, config: dict,  params: dict, ZF: Union[None, torch.Tensor] = None):
         """
         params: siren_weight, grid_sample_weight
         """
@@ -438,6 +452,7 @@ class Train2DTimeExplicitReg(LightningModule):
         self.siren = siren
         self.grid_sample = grid_sample
         self.measurement = measurement  # img: (T, H, W)
+        self.ZF = ZF
         dc_lin_tfm = load_linear_transform("2d+time", "dc")
         self.dc_loss = DCLoss(dc_lin_tfm)
         reg_lin_tfm = load_linear_transform("2d+time", "reg")
@@ -449,6 +464,7 @@ class Train2DTimeExplicitReg(LightningModule):
             x_s = batch
         else:
             x_s, lam_s = batch  # (B, H, W, 4), (B,); (lam, t, y, x)
+            # print(f"lam_s: {lam_s[0]}, x_s: {x_s[0, 0, 0, :]}")
         t_vals = x_s[:, 0, 0, 1]  # (B,)
         t_inds = (t_vals + 1) / 2 * (self.T - 1)
         t_inds = t_inds.long()
@@ -458,6 +474,10 @@ class Train2DTimeExplicitReg(LightningModule):
         x_s_grid_sample_in = x_s.unsqueeze(1)  # (B, T=1, H, W, 4)
         grid_sample_img = self.grid_sample(x_s_grid_sample_in[..., 1:]).reshape(siren_img.shape)  # (B, C=1, T=1, H, W) -> (B, H, W)
         img = siren_img * self.params["siren_weight"] + grid_sample_img * self.params["grid_sample_weight"]
+
+        if self.ZF is not None:
+            img = img + self.ZF[t_inds, ...]
+
         if if_pred:
             return img.detach()
         dc_loss = self.dc_loss(img, s_gt, t_inds)
@@ -467,12 +487,22 @@ class Train2DTimeExplicitReg(LightningModule):
 
     def __reg_step(self, batch):
         x_t, lam_t = batch  # (B, T, 4), (B,)
+        # print(f"lam_t: {lam_t[0]}, x_t: {x_t[0, 0, :]}")
 
         siren_img = self.siren(x_t).squeeze(-1)  # (B, T)
         B, T, D = x_t.shape
         x_t_grid_sample_in = x_t.reshape(B, T, 1, 1, D)  # (B, T, H=1, W=1, 4)
         grid_img = self.grid_sample(x_t_grid_sample_in[..., 1:]).reshape(siren_img.shape)  # (B, C=1, T, H=1, W=1) -> (B, T)
         img = siren_img + grid_img
+
+        if self.ZF is not None:
+            y_vals, x_vals = x_t[:, 0, 2], x_t[:, 0, 3]  # (B,) each
+            y_inds = (y_vals + 1) / 2 * (self.H - 1)
+            y_inds = y_inds.long()
+            x_inds = (x_vals + 1) / 2 * (self.W - 1)
+            x_inds = x_inds.long()
+            img = img + self.ZF[:, y_inds, x_inds].T  # (T, B) -> (B, T)
+        
         lam_t = lam_t.unsqueeze(1)  # (B, 1)
         reg_loss = self.reg_loss(img * lam_t, 1.)
         self.reg_metric(img * lam_t, 1.)
