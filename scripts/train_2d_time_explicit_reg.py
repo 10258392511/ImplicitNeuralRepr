@@ -10,6 +10,7 @@ if path not in sys.path:
 import argparse
 import torch
 import pickle
+import time
 import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from ImplicitNeuralRepr.configs import load_config
@@ -240,7 +241,12 @@ if __name__ == "__main__":
             reload_dataloaders_every_n_epochs=1
         )
     if args_dict["if_train"]:
+        time_start = time.time()
         trainer.fit(lit_model, datamodule=dm)
+        time_end = time.time()
+        time_duration = time_end - time_start
+        with open(os.path.join(args_dict["output_dir"], "args_dict.txt"), "a") as wf:
+            wf.write(f"training time: {time_duration}\n")
     
     print("Predicting...")
     for lam_iter in lam_grid:
