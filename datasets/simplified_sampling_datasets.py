@@ -11,7 +11,6 @@ from .coord_datasets_separate import (
 from torch.utils.data import DataLoader, Subset
 from pytorch_lightning import LightningDataModule
 from collections import defaultdict
-from itertools import cycle
 from typing import Optional
 
 

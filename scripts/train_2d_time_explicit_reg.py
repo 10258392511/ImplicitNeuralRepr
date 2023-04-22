@@ -15,13 +15,7 @@ import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from ImplicitNeuralRepr.configs import load_config
 from ImplicitNeuralRepr.datasets import (
-    load_data, 
-    Spatial2DTimeRegCoordDataset,
-    Temporal2DTimeRegCoordDataset,
-    Spatial2DTimeRegCoordPredDataset,
-    WrapperDM,
-    ZipDataset,
-    ZipDM,
+    load_data,
     SpatialTemporalRegSamplingDM,
     add_phase
 )
@@ -91,38 +85,6 @@ if __name__ == "__main__":
     img_complex = add_phase(img[:, None, ...], init_shape=(5, 5, 5), seed=args_dict["seed"], mode="2d+time")
     img_complex = img_complex.squeeze(1)  # (T, H, W)
     T, H, W = img_complex.shape
-
-    # in_shape = (T, H, W)
-    # lam_tfm = lambda lam : 10 ** lam
-    # spatial_ds = Spatial2DTimeRegCoordDataset(in_shape, args_dict["lam_min"], args_dict["lam_max"], lam_tfm)
-    # temporal_ds = Temporal2DTimeRegCoordDataset(in_shape, args_dict["lam_min"], args_dict["lam_max"], lam_tfm)
-    # ds_collection = [spatial_ds, temporal_ds]
-    # batch_size_collection = [None, args_dict["batch_size"]]
-    # num_samples_collection = list(map(lambda ds : len(ds), ds_collection))
-    # pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, args_dict["lam_min"])
-    # pred_batch_size = args_dict["batch_size"]
-    # dm = WrapperDM(
-    #     ds_collection,
-    #     batch_size_collection,
-    #     num_samples_collection,
-    #     pred_ds,
-    #     pred_batch_size,
-    #     args_dict["num_workers"]
-    # )
-
-    # in_shape = (T, H, W)
-    # lam_tfm = lambda lam : 10 ** lam
-    # zip_ds = ZipDataset(in_shape, args_dict["lam_min"], args_dict["lam_max"], lam_tfm)
-    # lam_grid = zip_ds.spatial_ds.lam_grid
-    # pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, lam_grid[0])
-    # pred_batch_size = args_dict["batch_size"]
-    # dm = ZipDM(
-    #     zip_ds,
-    #     args_dict["batch_size"],
-    #     pred_ds,
-    #     pred_batch_size,
-    #     args_dict["num_workers"]
-    # )
 
     lam_tfm = lambda lam : 10 ** lam
     dm_params = {
@@ -251,35 +213,8 @@ if __name__ == "__main__":
     print("Predicting...")
     for lam_iter in lam_grid:
         print(f"lam = {lam_iter}")
-        
-        # pred_ds = Spatial2DTimeRegCoordPredDataset(in_shape, lam_iter)
-        # pred_batch_size = args_dict["batch_size"]
-        # dm = WrapperDM(
-        #     ds_collection,
-        #     batch_size_collection,
-        #     num_samples_collection,
-        #     pred_ds,
-        #     pred_batch_size,
-        #     args_dict["num_workers"]
-        # )
-
-        # dm = ZipDM(
-        #     zip_ds,
-        #     args_dict["batch_size"],
-        #     pred_ds,
-        #     pred_batch_size,
-        #     args_dict["num_workers"]
-        # )
 
         dm_params["lam_pred"] = lam_iter
-            # "in_shape": (T, H, W),
-            # "lam_min": args_dict["lam_min"],
-            # "lam_max": args_dict["lam_max"],
-            # "lam_pred": lam_iter,
-            # "spatial_batch_size": args_dict["spatial_batch_size"],
-            # "pred_batch_size": args_dict["pred_batch_size"],
-            # "num_workers": args_dict["num_workers"]
-        # }
         dm = SpatialTemporalRegSamplingDM(dm_params, lam_tfm)
         
         preds = trainer.predict(lit_model, datamodule=dm)

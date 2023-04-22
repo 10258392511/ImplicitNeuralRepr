@@ -15,10 +15,7 @@ import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from ImplicitNeuralRepr.configs import load_config
 from ImplicitNeuralRepr.datasets import (
-    load_data, 
-    Spatial2DTimeCoordDataset,
-    Temporal2DTimeCoordDataset,
-    WrapperDM,
+    load_data,
     SpatialTemporalSamplingDM,
     add_phase
 )
@@ -87,23 +84,6 @@ if __name__ == "__main__":
     img_complex = add_phase(img[:, None, ...], init_shape=(5, 5, 5), seed=args_dict["seed"], mode="2d+time")
     img_complex = img_complex.squeeze(1)  # (T, H, W)
     T, H, W = img_complex.shape
-
-    # in_shape = (T, H, W)
-    # spatial_ds = Spatial2DTimeCoordDataset(in_shape)
-    # temporal_ds = Temporal2DTimeCoordDataset(in_shape)
-    # ds_collection = [spatial_ds, temporal_ds]
-    # batch_size_collection = [None, args_dict["batch_size"]]
-    # num_samples_collection = list(map(lambda ds : len(ds), ds_collection))
-    # pred_ds = spatial_ds
-    # pred_batch_size = args_dict["batch_size"]
-    # dm = WrapperDM(
-    #     ds_collection,
-    #     batch_size_collection,
-    #     num_samples_collection,
-    #     pred_ds,
-    #     pred_batch_size,
-    #     args_dict["num_workers"]
-    # )
 
     dm_params = {
         "in_shape": (T, H, W),

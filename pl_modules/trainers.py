@@ -205,7 +205,6 @@ class Train2DTime(LightningModule):
         dc_loss = self.__dc_step(x_s)
         reg_loss = self.__reg_step(x_t)
         loss = dc_loss + reg_loss
-        # print(f"batch {batch_idx}: x_s {type(x_s)}, {x_s[0, 0, 0, :]}, x_t: {type(x_t)}, dc_loss: {dc_loss.item()}")
 
         # logging
         log_dict = {
@@ -464,7 +463,6 @@ class Train2DTimeExplicitReg(LightningModule):
             x_s = batch
         else:
             x_s, lam_s = batch  # (B, H, W, 4), (B,); (lam, t, y, x)
-            # print(f"lam_s: {lam_s[0]}, x_s: {x_s[0, 0, 0, :]}")
         t_vals = x_s[:, 0, 0, 1]  # (B,)
         t_inds = (t_vals + 1) / 2 * (self.T - 1)
         t_inds = t_inds.long()
@@ -487,7 +485,6 @@ class Train2DTimeExplicitReg(LightningModule):
 
     def __reg_step(self, batch):
         x_t, lam_t = batch  # (B, T, 4), (B,)
-        # print(f"lam_t: {lam_t[0]}, x_t: {x_t[0, 0, :]}")
 
         siren_img = self.siren(x_t).squeeze(-1)  # (B, T)
         B, T, D = x_t.shape
