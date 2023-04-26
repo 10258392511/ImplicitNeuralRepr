@@ -17,7 +17,8 @@ CONFIG_PATHS = {
 
 OPTIMIZER_MAP = {
     "AdamW": torch.optim.AdamW,
-    "Adam": torch.optim.Adam
+    "Adam": torch.optim.Adam,
+    "LBFGS": torch.optim.LBFGS
 }
 
 

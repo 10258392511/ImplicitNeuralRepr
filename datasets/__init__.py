@@ -16,7 +16,8 @@ from .spatial_time_reg import (
 )
 from .simplified_sampling_datasets import (
     SpatialTemporalSamplingDM,
-    SpatialTemporalRegSamplingDM
+    SpatialTemporalRegSamplingDM,
+    FracSpatialTemporalRegDM
 )
 from monai.transforms import Resize as monai_Resize
 from typing import Sequence, Union

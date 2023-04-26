@@ -24,9 +24,12 @@ transforms:
 
 optimization:
   siren:
-    opt_name: "AdamW"
-    opt_params: 
-      lr: !!float 1e-4
+    # opt_name: "AdamW"
+    # opt_params: 
+      # lr: !!float 1e-4
+    opt_name: "LBFGS"
+    opt_params:
+      lr: !!float 1e-2
     scheduler_name: "StepLR"
     scheduler_params:
       step_size: 50
