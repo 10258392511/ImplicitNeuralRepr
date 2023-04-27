@@ -220,6 +220,7 @@ def siren_param_hist(model: SirenComplex, **kwargs):
 
     for axis in axes.flatten():
         axis.grid(axis="y")
+    fig.tight_layout()
 
     return fig, axes  
 

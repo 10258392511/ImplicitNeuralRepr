@@ -28,6 +28,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from ImplicitNeuralRepr.pl_modules.callbacks import Train2DTimeCallack
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
+from einops import rearrange
 from datetime import datetime
 
 
@@ -140,6 +141,13 @@ if __name__ == "__main__":
         if_save=True,
         save_dir=args_dict["output_dir"],
         filename="sens.png"
+    )
+    mask = rearrange(lin_tfm.random_under_fourier.mask, "T C N -> C N T")  # C = 1
+    vis_images(
+        mask,
+        if_save=True,
+        save_dir=args_dict["output_dir"],
+        filename="mask.png"
     )
 
     lit_model_params = {

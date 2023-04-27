@@ -479,9 +479,7 @@ class Train2DTimeExplicitReg(LightningModule):
 
         if if_pred:
             return img.detach()
-        # dc_loss = self.dc_loss(img, s_gt, t_inds)
-        # self.dc_metric(img, s_gt, t_inds)
-
+        
         # lam_s_sqrt = torch.sqrt(lam_s)
         # img = img / expand_dim_as(lam_s_sqrt, img)
         # s_gt = s_gt / expand_dim_as(lam_s_sqrt, s_gt)
@@ -507,10 +505,6 @@ class Train2DTimeExplicitReg(LightningModule):
             x_inds = x_inds.long()
             img = img + self.ZF[:, y_inds, x_inds].T  # (T, B) -> (B, T)
         
-        # lam_t = lam_t.unsqueeze(1)  # (B, 1)
-        # reg_loss = self.reg_loss(img * lam_t, 1.)
-        # self.reg_metric(img * lam_t, 1.)
-
         img = img * expand_dim_as(lam_t, img)
         reg_loss = self.reg_loss(img, 1.)
         self.reg_metric(img, 1.)
