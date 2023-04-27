@@ -20,7 +20,7 @@ from ImplicitNeuralRepr.datasets import (
     FracSpatialTemporalRegDM,
     add_phase
 )
-from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
+from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif, siren_param_hist
 from ImplicitNeuralRepr.models import load_model, GridSample, reload_model
 from ImplicitNeuralRepr.linear_transforms import load_linear_transform
 from ImplicitNeuralRepr.pl_modules.trainers import Train2DTimeExplicitReg
@@ -111,6 +111,9 @@ if __name__ == "__main__":
 
     # load model
     siren = load_model(args_dict["task_name"])
+    fig_hist, axes_hist = siren_param_hist(siren)
+    fig_hist.savefig(os.path.join(args_dict["output_dir"], "siren_before.png"))
+
     grid_sample_params = {
         "kernel_shape": args_dict["kernel_shape"]
     }
@@ -215,6 +218,9 @@ if __name__ == "__main__":
         with open(os.path.join(args_dict["output_dir"], "args_dict.txt"), "a") as wf:
             wf.write(f"training time: {time_duration}\n")
     
+    fig_hist, axes_hist = siren_param_hist(siren)
+    fig_hist.savefig(os.path.join(args_dict["output_dir"], "siren_after.png"))
+
     print("Predicting...")
     for lam_iter in lam_grid:
         print(f"lam = {lam_iter}")
@@ -229,3 +235,12 @@ if __name__ == "__main__":
         save_vol_as_gif(torch.abs(pred), save_dir=save_dir, filename=f"recons_mag.gif")
         save_vol_as_gif(torch.angle(pred), save_dir=save_dir, filename=f"recons_phase.gif")
         torch.save(pred.detach().cpu().squeeze(1), os.path.join(save_dir, f"reconstructions.pt"))
+
+        pred = pred.squeeze()  # (T, H, W)
+        T, H, W = pred.shape
+        pred_iter = pred[None, T // 2, :, :] 
+        vis_images(torch.abs(pred_iter), torch.angle(pred_iter), if_save=True, save_dir=save_dir, filename="half_T.png")
+        pred_iter = pred[None, :, H // 2, :].transpose(-1, -2)  # x-t
+        vis_images(torch.abs(pred_iter), torch.angle(pred_iter), if_save=True, save_dir=save_dir, filename="half_H.png")
+        pred_iter = pred[None, :, :, W // 2].transpose(-1, -2)  # y-t
+        vis_images(torch.abs(pred_iter), torch.angle(pred_iter), if_save=True, save_dir=save_dir, filename="half_W.png")

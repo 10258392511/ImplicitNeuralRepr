@@ -1,9 +1,9 @@
 model:
   name: "SirenComplex"
   in_features: 4
-  hidden_features: 512
+  hidden_features: 256
   out_features: 2
-  hidden_layers: 8
+  hidden_layers: 16
   outermost_linear: true
   first_omega_0: 30
   hidden_omega_0: 30
