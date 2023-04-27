@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+import torch.nn as nn
 import SimpleITK as sitk
 import os
 import yaml
@@ -8,6 +9,8 @@ import argparse
 import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from PIL import Image
+from ImplicitNeuralRepr.models import SirenComplex
+from ImplicitNeuralRepr.configs import FIGSIZE_UNIT
 from typing import Union
 
 
@@ -179,3 +182,44 @@ def dict2str(params: dict, delimiter=", "):
         out_str += f"{key}: {val}{delimiter_iter}"
     
     return out_str
+
+
+def expand_dim_as(src: torch.Tensor, tgt: torch.Tensor):
+    """
+    src: (B,), tgt: (B, ...)
+    """
+    num_dims = tgt.ndim
+    expand_shape = np.ones((num_dims), dtype=int)
+    expand_shape[0] = src.shape[0]
+    src_expanded = src.reshape(tuple(expand_shape))
+
+    return src_expanded
+
+
+def siren_param_hist(model: SirenComplex, **kwargs):
+    """
+    kwargs: figsize: tuple, weight_bins: int, bias_bins: int
+    """
+    # print("Creating param historam...")
+    figsize = kwargs.get("figsize", None)
+    bias_bins = kwargs.get("bias_bins", 20)
+    weight_bins = kwargs.get("weight_bins", 80)
+    layer_list = model.siren.net_list
+    if figsize is None:
+        figsize = (FIGSIZE_UNIT * len(layer_list), FIGSIZE_UNIT * 2)
+    fig, axes = plt.subplots(2, len(layer_list), figsize=figsize)
+    for i in range(len(layer_list)):
+        # print(f"Current: {i + 1}/{len(layer_list)}")
+        layer_iter = layer_list[i]
+        if isinstance(layer_iter, nn.Linear):
+            axes[0, i].hist(ptu.to_numpy(layer_iter.weight).flatten(), bins=weight_bins)
+            axes[1, i].hist(ptu.to_numpy(layer_iter.bias), bins=bias_bins)
+        else:
+            axes[0, i].hist(ptu.to_numpy(layer_iter.linear.weight).flatten(), bins=weight_bins)
+            axes[1, i].hist(ptu.to_numpy(layer_iter.linear.bias), bins=bias_bins)
+
+    for axis in axes.flatten():
+        axis.grid(axis="y")
+
+    return fig, axes  
+

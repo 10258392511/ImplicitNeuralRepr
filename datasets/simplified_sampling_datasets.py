@@ -170,11 +170,12 @@ class FracSpatialTemporalRegDM(LightningDataModule):
         S1, T1, lam1; S2, T2, lam1; S3, T3, lam2; S4, T4, lam2; S1, T5, lam1...
         """
         lam_samples = self.unif_lam.sample((self.params["num_lams"],))  # (num_lams,), [lam_1, lam_2], Unif[.lam_min, .lam_max]
-        lam_all = self.lam_tfm(lam_samples.repeat_interleave(self.spatial_batch_size_each))  # (.spatial_batch_size,), [lam_1, lam_1, lam_2, lam_2]
+        lam_all = self.lam_tfm(lam_samples)
         lam_samples = self.__normalize_lam(lam_samples)  # Unif[-1, 1]
         
         spatial_all = []
-        for lam_iter in lam_samples:
+        lam_s_all = []
+        for lam_iter, lam_val_iter in zip(lam_samples, lam_all):
             spatial_iter = torch.zeros((self.spatial_batch_size_each, self.H, self.W, 4))
             spatial_iter[..., -2:] = self.yx_grid
             t_samples_idx = torch.randperm(self.T)[:self.spatial_batch_size_each]
@@ -182,18 +183,23 @@ class FracSpatialTemporalRegDM(LightningDataModule):
             spatial_iter[..., 1] = t_samples.reshape(t_samples.shape[0], 1, 1)
             spatial_iter[..., 0] = lam_iter
             spatial_all.append(spatial_iter)
+            lam_s_all.append(torch.ones((self.spatial_batch_size_each,)) * lam_val_iter)
         spatial_all = torch.cat(spatial_all, dim=0)  # (.spatial_batch_size, H, W, 4)
+        lam_s_all = torch.cat(lam_s_all, dim=0)  # (.spatial_batch_size,)
 
         temporal_all = []
+        lam_t_all = []
         for _ in range(self.params["num_temporal_repeats"]):
-            for lam_iter in lam_samples:
+            for lam_iter, lam_val_iter in zip(lam_samples, lam_all):
                 temporal_iter = torch.zeros((self.temporal_batch_size_each, self.T, 4))
                 temporal_iter[..., 1] = self.t_grid
                 yx_samples = self.unif.sample((self.temporal_batch_size_each, 2))
                 temporal_iter[..., -2:] = yx_samples.unsqueeze(1)  # left: (.temporal_batch_size_each, .T, 2)
                 temporal_iter[..., 0] = lam_iter
                 temporal_all.append(temporal_iter)
+                lam_t_all.append(torch.ones((self.temporal_batch_size_each,)) * lam_val_iter)
         temporal_all = torch.cat(temporal_all, dim=0)  # (.temporal_batch_size, T, 4)
+        lam_t_all = torch.cat(lam_t_all, dim=0)  # (.temporal_batch_size,)
 
-        self.spatial_subset = TensorDataset(spatial_all, lam_all)
-        self.temporal_subset = TensorDataset(temporal_all)
+        self.spatial_subset = TensorDataset(spatial_all, lam_s_all)
+        self.temporal_subset = TensorDataset(temporal_all, lam_t_all)

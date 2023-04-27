@@ -2,6 +2,8 @@ import torch
 import os
 import yaml
 
+FIGSIZE_UNIT = 3.6
+
 ROOT = os.path.abspath(__file__)
 for _ in range(2):
     ROOT = os.path.dirname(ROOT)

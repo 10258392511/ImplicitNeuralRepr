@@ -56,6 +56,7 @@ class Siren(nn.Module):
         super().__init__()
 
         self.net = []
+        self.net_list = None
         self.net.append(SineLayer(in_features, hidden_features,
                                   is_first=True, omega_0=first_omega_0))
 
@@ -75,6 +76,7 @@ class Siren(nn.Module):
             self.net.append(SineLayer(hidden_features, out_features,
                                       is_first=False, omega_0=hidden_omega_0))
 
+        self.net_list = self.net
         self.net = nn.Sequential(*self.net)
 
     def forward(self, x):

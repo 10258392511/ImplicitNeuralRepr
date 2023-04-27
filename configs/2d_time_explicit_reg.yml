@@ -1,9 +1,9 @@
 model:
   name: "SirenComplex"
   in_features: 4
-  hidden_features: 256
+  hidden_features: 512
   out_features: 2
-  hidden_layers: 16
+  hidden_layers: 8
   outermost_linear: true
   first_omega_0: 30
   hidden_omega_0: 30
@@ -24,12 +24,13 @@ transforms:
 
 optimization:
   siren:
-    # opt_name: "AdamW"
-    # opt_params: 
-      # lr: !!float 1e-4
-    opt_name: "LBFGS"
-    opt_params:
-      lr: !!float 1e-2
+    opt_name: "AdamW"
+    opt_params: 
+      lr: !!float 1e-4
+      betas: [0.9, 0.9]
+    # opt_name: "LBFGS"
+    # opt_params:
+    #   lr: !!float 1e-2
     scheduler_name: "StepLR"
     scheduler_params:
       step_size: 50

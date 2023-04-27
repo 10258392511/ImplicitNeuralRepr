@@ -17,6 +17,7 @@ from ImplicitNeuralRepr.configs import load_config
 from ImplicitNeuralRepr.datasets import (
     load_data,
     SpatialTemporalRegSamplingDM,
+    FracSpatialTemporalRegDM,
     add_phase
 )
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
@@ -52,6 +53,7 @@ if __name__ == "__main__":
     parser.add_argument("--kernel_shape", type=int, nargs="+", default=[1, 1, 12, 32, 32])
     parser.add_argument("--lam_min", type=int, default=-3)
     parser.add_argument("--lam_max", type=int, default=0)
+    parser.add_argument("--num_lams", type=int, default=4)  # number of lambda's per batch
 
     parser.add_argument("--siren_weight", type=float, default=1.)
     parser.add_argument("--grid_sample_weight", type=float, default=1.)
@@ -91,14 +93,17 @@ if __name__ == "__main__":
         "in_shape": (T, H, W),
         "lam_min": args_dict["lam_min"],
         "lam_max": args_dict["lam_max"],
+        "num_lams": args_dict["num_lams"],
         "lam_pred": -1.,
         "spatial_batch_size": args_dict["spatial_batch_size"],
         "pred_batch_size": args_dict["pred_batch_size"],
         "num_temporal_repeats": args_dict["num_temporal_repeats"],
         "num_workers": args_dict["num_workers"]
     }
-    dm = SpatialTemporalRegSamplingDM(dm_params, lam_tfm)
-    lam_grid = dm.spatial_ds.lam_grid
+    # dm = SpatialTemporalRegSamplingDM(dm_params, lam_tfm)
+    dm = FracSpatialTemporalRegDM(dm_params, lam_tfm)
+    # lam_grid = dm.spatial_ds.lam_grid
+    lam_grid = torch.linspace(-1, 1, args_dict["lam_max"] - args_dict["lam_min"])
 
     torch.save(img_complex, os.path.join(args_dict["output_dir"], "original.pt"))
     save_vol_as_gif(torch.abs(img_complex.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="orig_mag.gif")  # (T, H, W) -> (T, 1, H, W)
@@ -215,8 +220,9 @@ if __name__ == "__main__":
         print(f"lam = {lam_iter}")
 
         dm_params["lam_pred"] = lam_iter
-        dm = SpatialTemporalRegSamplingDM(dm_params, lam_tfm)
-        
+        # dm = SpatialTemporalRegSamplingDM(dm_params, lam_tfm)
+        dm = FracSpatialTemporalRegDM(dm_params, lam_tfm)
+
         preds = trainer.predict(lit_model, datamodule=dm)
         pred = lit_model.pred2vol(preds).unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
         save_dir = os.path.join(args_dict["output_dir"], f"lam_{lam_iter: .3f}")

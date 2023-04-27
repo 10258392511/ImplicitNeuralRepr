@@ -17,7 +17,8 @@ from .utils import (
     load_reg_profile
 )
 from ImplicitNeuralRepr.utils.utils import (
-    save_vol_as_gif
+    save_vol_as_gif,
+    expand_dim_as
 )
 from collections import defaultdict
 from einops import rearrange
@@ -462,7 +463,7 @@ class Train2DTimeExplicitReg(LightningModule):
         if if_pred:
             x_s = batch
         else:
-            x_s, lam_s = batch  # (B, H, W, 4), (B,); (lam, t, y, x)
+            x_s, lam_s = batch  # (Bs, H, W, 4), (Bs,); (lam, t, y, x)
         t_vals = x_s[:, 0, 0, 1]  # (B,)
         t_inds = (t_vals + 1) / 2 * (self.T - 1)
         t_inds = t_inds.long()
@@ -478,13 +479,19 @@ class Train2DTimeExplicitReg(LightningModule):
 
         if if_pred:
             return img.detach()
+        # dc_loss = self.dc_loss(img, s_gt, t_inds)
+        # self.dc_metric(img, s_gt, t_inds)
+
+        # lam_s_sqrt = torch.sqrt(lam_s)
+        # img = img / expand_dim_as(lam_s_sqrt, img)
+        # s_gt = s_gt / expand_dim_as(lam_s_sqrt, s_gt)
         dc_loss = self.dc_loss(img, s_gt, t_inds)
         self.dc_metric(img, s_gt, t_inds)
 
         return dc_loss
 
     def __reg_step(self, batch):
-        x_t, lam_t = batch  # (B, T, 4), (B,)
+        x_t, lam_t = batch  # (Bt, T, 4), (Bt,)
 
         siren_img = self.siren(x_t).squeeze(-1)  # (B, T)
         B, T, D = x_t.shape
@@ -500,9 +507,13 @@ class Train2DTimeExplicitReg(LightningModule):
             x_inds = x_inds.long()
             img = img + self.ZF[:, y_inds, x_inds].T  # (T, B) -> (B, T)
         
-        lam_t = lam_t.unsqueeze(1)  # (B, 1)
-        reg_loss = self.reg_loss(img * lam_t, 1.)
-        self.reg_metric(img * lam_t, 1.)
+        # lam_t = lam_t.unsqueeze(1)  # (B, 1)
+        # reg_loss = self.reg_loss(img * lam_t, 1.)
+        # self.reg_metric(img * lam_t, 1.)
+
+        img = img * expand_dim_as(lam_t, img)
+        reg_loss = self.reg_loss(img, 1.)
+        self.reg_metric(img, 1.)
 
         return reg_loss
     
