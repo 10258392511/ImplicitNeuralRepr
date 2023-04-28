@@ -19,7 +19,7 @@ MODEL_NAME_MAP = {
 MODEL_RELOAD_PATHS = {
     "spatial": "spatial_logs/2023_03_17_21_52_38_197732",
     "2d+time": "2d_time_logs/repeat_temporal_samples/siren_1_grid_0_repeat_t_6_epochs_300/2023_04_22_00_47_11_233446",
-    "2d+time+explicit_reg": "2d_time_explicit_reg_logs/repeat_temporal_samples/siren_1_grid_0_repeat_t_6_lam_min_-6_max_-1/2023_04_22_01_18_39_574304"
+    "2d+time+explicit_reg": "2d_time_explicit_reg_logs/width_vs_depth/depth_8_width_512/2023_04_27_13_03_32_323027"
 }
 
 
