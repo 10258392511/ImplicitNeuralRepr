@@ -1,3 +1,4 @@
+import torch.nn as nn
 import os
 
 from .siren import Siren, SirenComplex
@@ -38,3 +39,21 @@ def reload_model(task_name: str) -> str:
     ckpt_path = os.path.join(ROOT, MODEL_RELOAD_PATHS[task_name], "checkpoints", "last.ckpt")
     
     return ckpt_path
+
+
+def gaussian_init(model: SirenComplex, gaussian_params: dict) -> SirenComplex:
+    """
+    The first layer use uniform initialization; the rest use Gaussian initialization.
+
+    gaussian_params: {"mean": ..., "std": ...}
+    """
+    for i, layer_iter in enumerate(model.siren.net_list):
+        # if i == 0 or i == len(model.siren.net_list) - 1:
+        if i == 0:
+            continue
+        if isinstance(layer_iter, nn.Linear):
+            nn.init.normal_(layer_iter.weight, gaussian_params["mean"][i], gaussian_params["std"][i])
+        else:    
+            nn.init.normal_(layer_iter.linear.weight, gaussian_params["mean"][i], gaussian_params["std"][i])
+    
+    return model

@@ -21,7 +21,7 @@ from ImplicitNeuralRepr.datasets import (
     add_phase
 )
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif, siren_param_hist
-from ImplicitNeuralRepr.models import load_model, GridSample, reload_model
+from ImplicitNeuralRepr.models import load_model, GridSample, reload_model, gaussian_init
 from ImplicitNeuralRepr.linear_transforms import load_linear_transform
 from ImplicitNeuralRepr.pl_modules.trainers import Train2DTimeExplicitReg
 from pytorch_lightning.callbacks import ModelCheckpoint
@@ -47,6 +47,8 @@ if __name__ == "__main__":
     parser.add_argument("--pred_batch_size", type=int, default=32)
     parser.add_argument("--num_temporal_repeats", type=int, default=3)
     parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument("--if_gaussian_init", action="store_true")
+    parser.add_argument("--gaussian_param_filename", default="2d_time_explicit_reg_logs/study_init/gaussian_params.pkl")
 
     parser.add_argument("--task_name", default="2d+time+explicit_reg")
     parser.add_argument("--noise_std", type=float, default=1e-3)
@@ -112,6 +114,10 @@ if __name__ == "__main__":
 
     # load model
     siren = load_model(args_dict["task_name"])
+    if args_dict["if_gaussian_init"]:
+        with open(args_dict["gaussian_param_filename"], "rb") as rf:
+            gaussian_params = pickle.load(rf)
+        siren = gaussian_init(siren, gaussian_params)
     fig_hist, axes_hist = siren_param_hist(siren)
     fig_hist.savefig(os.path.join(args_dict["output_dir"], "siren_before.png"))
 
