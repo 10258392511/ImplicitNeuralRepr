@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
@@ -62,9 +63,44 @@ class LIIFParametric(nn.Module):
         return x_pred.squeeze(-1)
 
         
-
 class LIIFNonParametric(nn.Module):
-    pass
+    def __init__(self, params: dict):
+        """
+        params: see 2d_time_liif_non_parametric.yml
+        """
+        super().__init__()
+        self.params = params
+        self.encoder_real = UNet(**self.params["unet"])
+        self.encoder_imag = UNet(**self.params["unet"])
+        self.num_heads = self.params["mlp"]["num_heads"]
+        
+    def __shared_forward(self, x_zf: torch.Tensor, encoder) -> torch.Tensor:
+        # x_zf: (B, T, H, W)
+        B, T, H, W = x_zf.shape
+        t_coord = torch.linspace(-1, 1, T, device=x_zf.device)  # (T,)
+        x = encoder(x_zf)  # (B, C, H, W)
+        x = rearrange(x, "B C H W -> B H W C")
+        C = x.shape[-1]
+        x = rearrange(x, "B H W (num_heads C1 C2) -> B H W num_heads C1 C2", num_heads=self.num_heads, C1=np.sqrt(C / self.num_heads).astype(int))
+        C_head = x.shape[-1]
+        t_coord_forward = t_coord.reshape(T, 1).expand(T, C_head)
+        for idx_head in range(self.num_heads):
+            weights_iter = x[..., idx_head, :, :]  # (B, H, W, C_head, C_head)
+            if idx_head == 0:
+                t_coord_forward = torch.einsum("BHWOI,TI->BTHWO", weights_iter, t_coord_forward)  # (B, T, H, W, C_head)
+            else:
+                t_coord_forward = torch.einsum("BHWOI,BTHWI->BTHWO", weights_iter, t_coord_forward)  # (B, T, H, W, C_head)
+            if idx_head < self.params["mlp"]["num_heads"] - 1:
+                t_coord_forward = torch.relu(t_coord_forward)
+        
+        x_pred = t_coord_forward[..., 0]  # (B, T, H, W, C_head) -> (B, T, H, W)
 
+        return x_pred
+    
+    def forward(self, x_zf: torch.Tensor) -> torch.Tensor:
+        x_pred_real = self.__shared_forward(torch.real(x_zf), self.encoder_real)
+        x_pred_imag = self.__shared_forward(torch.imag(x_zf), self.encoder_imag)
+        x_pred = x_pred_real + 1j * x_pred_imag
 
-
+        # (B, T, H, W)
+        return x_pred

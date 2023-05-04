@@ -1,42 +1,33 @@
+dataset:
+  seed: 0
+  train_test_split: 0.9
+
 model:
-  name: "SirenComplex"
-  in_features: 3
-  hidden_features: 256
-  out_features: 2
-  hidden_layers: 16
-  outermost_linear: true
-  first_omega_0: 30
-  hidden_omega_0: 30
+  name: "LIIFNonParametric"
+  mlp:
+    num_heads: 4  # split into 4 layers
+  unet:
+    spatial_dims: 2
+    in_channels: 25
+    out_channels: 1024  # feature_map_dim
+    channels: [128, 512]
+    strides: [2]
 
 transforms:
   dc:
     name: "SENSE"
     sens_type: "exp"
     num_sens: 2
-    in_shape: [25, 127, 127]
+    in_shape: [25, 128, 128]
     mask_params: 
       if_temporal: true
     seed: 0
 
-  reg:
-    name: "FiniteDiff"
-    dim: -1  # (B, T), TVt
-
 optimization:
-  siren:
-    opt_name: "AdamW"
-    opt_params: 
-      lr: !!float 1e-4
-    scheduler_name: "StepLR"
-    scheduler_params:
-      step_size: 50
-      gamma: 0.5
-  grid_sample:
-    opt_name: "AdamW"
-    opt_params: 
-      lr: !!float 1e-2
-    scheduler_name: "StepLR"
-    scheduler_params:
-      step_size: 50
-      gamma: 0.5
-  
+  opt_name: "AdamW"
+  opt_params: 
+    lr: !!float 1e-4
+  scheduler_name: "StepLR"
+  scheduler_params:
+    step_size: 50
+    gamma: 0.5

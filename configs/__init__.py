@@ -14,7 +14,8 @@ CONFIG_PATHS = {
     "2d+time": os.path.join(ROOT, "configs", "2d_time.yml"),
     "2d+time+reg": os.path.join(ROOT, "configs", "2d_time_reg.yml"),
     "2d+time+explicit_reg": os.path.join(ROOT, "configs", "2d_time_explicit_reg.yml"),
-    "2d+time_liif_param": os.path.join(ROOT, "configs", "2d_time_liif_parametric.yml")
+    "2d+time_liif_param": os.path.join(ROOT, "configs", "2d_time_liif_parametric.yml"),
+    "2d+time_liif_non_param": os.path.join(ROOT, "configs", "2d_time_liif_non_parametric.yml")
 }
 
 
