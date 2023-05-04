@@ -22,7 +22,8 @@ from ImplicitNeuralRepr.utils.utils import (
 )
 from collections import defaultdict
 from einops import rearrange
-from typing import List, Union
+from typing import Any, List, Optional, Union
+from pytorch_lightning.utilities.types import STEP_OUTPUT
 
 
 class TrainSpatial(LightningModule):
@@ -576,3 +577,61 @@ class Train2DTimeExplicitReg(LightningModule):
             })
         
         return opt_siren_dict, opt_grid_sample_dict
+
+
+class TrainLIIF(LightningModule):
+    def __init__(self, model: nn.Module, config: dict, lin_tfm: LinearTransform):
+        super().__init__()
+        self.model = model,
+        self.config = config
+        self.lin_tfm = lin_tfm
+
+    @staticmethod
+    def compute_l1_loss_complex(x_pred: torch.Tensor, x: torch.Tensor):
+        # x_pred, x: (B, T, H, W)
+        x_diff = x_pred - x
+        loss_real = torch.abs(torch.real(x_diff)).sum(dim=(1, 2, 3))  # (B,)
+        loss_imag = torch.abs(torch.imag(x_diff)).sum(dim=(1, 2, 3))
+        loss = (loss_real + loss_imag).mean()
+
+        return loss
+    
+    def __shared_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
+        img, measurement = batch  # (B, T, H, W), (B, T, H, W, num_sens)
+        img_zf = self.lin_tfm.conj_op(measurement)
+        img_pred = self.model(img_zf)  # (B, T, H, W)
+        loss = self.compute_l1_loss_complex(img_pred, img)
+
+        return loss, img_pred
+    
+    def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
+        loss, _ = self.__shared_step(batch, batch_idx)
+
+        self.log("train_loss", loss, prog_bar=True, on_step=True)
+        self.log("epoch_train_loss", loss, prog_bar=True, on_epoch=True)
+
+        return loss
+    
+    def validation_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
+        loss, _ = self.__shared_step(batch, batch_idx)
+
+        self.log("epoch_val_loss", loss, prog_bar=True, on_epoch=True)
+
+        return loss
+
+    def predict_step(self, batch: Any, batch_idx: int, **kwargs) -> Any:
+        _, img_pred = self.__shared_step(batch, batch_idx)
+
+        return img_pred
+    
+    def configure_optimizers(self):
+        opt, scheduler = load_optimizer(self.config["optimization"], self.model)
+        opt_dict = {
+            "optimizer": opt
+        }
+        if scheduler is not None:
+            opt_dict.update({
+                "lr_scheduler": scheduler
+            })
+        
+        return opt_dict
