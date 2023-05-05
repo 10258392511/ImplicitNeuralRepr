@@ -582,7 +582,7 @@ class Train2DTimeExplicitReg(LightningModule):
 class TrainLIIF(LightningModule):
     def __init__(self, model: nn.Module, config: dict, lin_tfm: LinearTransform):
         super().__init__()
-        self.model = model,
+        self.model = model
         self.config = config
         self.lin_tfm = lin_tfm
 
@@ -596,10 +596,10 @@ class TrainLIIF(LightningModule):
 
         return loss
     
-    def __shared_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
+    def __shared_step(self, batch: Any, batch_idx: int, t_coord: Union[torch.Tensor, None] = None) -> Union[STEP_OUTPUT, None]:
         img, measurement = batch  # (B, T, H, W), (B, T, H, W, num_sens)
         img_zf = self.lin_tfm.conj_op(measurement)
-        img_pred = self.model(img_zf)  # (B, T, H, W)
+        img_pred = self.model(img_zf, t_coord)  # (B, T, H, W)
         loss = self.compute_l1_loss_complex(img_pred, img)
 
         return loss, img_pred
@@ -620,7 +620,13 @@ class TrainLIIF(LightningModule):
         return loss
 
     def predict_step(self, batch: Any, batch_idx: int, **kwargs) -> Any:
-        _, img_pred = self.__shared_step(batch, batch_idx)
+        """
+        kwargs: t_coord
+        """
+        measurement = batch
+        t_coord = kwargs.get("t_coord", None)
+        img_zf = self.lin_tfm.conj_op(measurement)
+        img_pred = self.model(img_zf, t_coord)  # (B, T, H, W)
 
         return img_pred
     

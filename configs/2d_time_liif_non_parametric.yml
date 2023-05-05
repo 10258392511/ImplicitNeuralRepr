@@ -5,13 +5,13 @@ dataset:
 model:
   name: "LIIFNonParametric"
   mlp:
-    num_heads: 4  # split into 4 layers
+    num_heads: 4  # split into num_heads layers
   unet:
     spatial_dims: 2
     in_channels: 25
-    out_channels: 1024  # feature_map_dim
-    channels: [128, 512]
-    strides: [2]
+    out_channels: 2304  # feature_map_dim
+    channels: [128, 512, 2304]
+    strides: [2, 2, 2]
 
 transforms:
   dc:
@@ -26,8 +26,8 @@ transforms:
 optimization:
   opt_name: "AdamW"
   opt_params: 
-    lr: !!float 1e-4
+    lr: !!float 1e-5
   scheduler_name: "StepLR"
   scheduler_params:
-    step_size: 50
+    step_size: 10
     gamma: 0.5

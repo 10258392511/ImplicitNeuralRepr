@@ -14,7 +14,7 @@ class MLP(nn.Module):
         super().__init__()
         self.params = params
         self.net_list = [nn.Linear(self.params["in_features"], self.params["hidden_features"])]
-        for _ in range(self.params["hidden_features"]):
+        for _ in range(self.params["hidden_layers"]):
             self.net_list.extend([nn.ReLU(), nn.Linear(self.params["hidden_features"], self.params["hidden_features"])])
         self.net_list.append(nn.Linear(self.params["hidden_features"], self.params["out_features"]))
         self.net = nn.Sequential(*self.net_list)
@@ -38,10 +38,14 @@ class LIIFParametric(nn.Module):
         self.mlp_real = MLP(self.params["mlp"])
         self.mlp_imag = MLP(self.params["mlp"])
     
-    def __shared_forward(self, x_zf: torch.Tensor, encoder, mlp) -> torch.Tensor:
-        # x_zf: (B, T, H, W)
+    def __shared_forward(self, x_zf: torch.Tensor, encoder, mlp, t_coord=None) -> torch.Tensor:
+        # x_zf: (B, T, H, W), t_coord: (T_any, )
         B, T, H, W = x_zf.shape
-        t_coord = torch.linspace(-1, 1, T, device=x_zf.device)  # (T,)
+        if t_coord is None:
+            t_coord = torch.linspace(-1, 1, T, device=x_zf.device)  # (T,)
+        else:
+            t_coord = t_coord.to(x_zf.device)
+            T = t_coord.shape[0]
         x = encoder(x_zf)  # (B, C, H, W)
         x = torch.tanh(x)
         x = rearrange(x, "B C H W -> B H W C")
@@ -54,9 +58,9 @@ class LIIFParametric(nn.Module):
 
         return x_pred
 
-    def forward(self, x_zf: torch.Tensor) -> torch.Tensor:
-        x_pred_real = self.__shared_forward(torch.real(x_zf), self.encoder_real, self.mlp_real)
-        x_pred_imag = self.__shared_forward(torch.imag(x_zf), self.encoder_imag, self.mlp_imag)
+    def forward(self, x_zf: torch.Tensor, t_coord=None) -> torch.Tensor:
+        x_pred_real = self.__shared_forward(torch.real(x_zf), self.encoder_real, self.mlp_real, t_coord)
+        x_pred_imag = self.__shared_forward(torch.imag(x_zf), self.encoder_imag, self.mlp_imag, t_coord)
         x_pred = x_pred_real + 1j * x_pred_imag  # (B, T, H, W, 1)
 
         # (B, T, H, W)
@@ -74,10 +78,14 @@ class LIIFNonParametric(nn.Module):
         self.encoder_imag = UNet(**self.params["unet"])
         self.num_heads = self.params["mlp"]["num_heads"]
         
-    def __shared_forward(self, x_zf: torch.Tensor, encoder) -> torch.Tensor:
-        # x_zf: (B, T, H, W)
+    def __shared_forward(self, x_zf: torch.Tensor, encoder, t_coord=None) -> torch.Tensor:
+        # x_zf: (B, T, H, W), t_coord: (T_any,)
         B, T, H, W = x_zf.shape
-        t_coord = torch.linspace(-1, 1, T, device=x_zf.device)  # (T,)
+        if t_coord is None:
+            t_coord = torch.linspace(-1, 1, T, device=x_zf.device)  # (T,)
+        else:
+            t_coord = t_coord.to(x_zf.device)
+            T = t_coord.shape[0]
         x = encoder(x_zf)  # (B, C, H, W)
         x = rearrange(x, "B C H W -> B H W C")
         C = x.shape[-1]
@@ -97,9 +105,9 @@ class LIIFNonParametric(nn.Module):
 
         return x_pred
     
-    def forward(self, x_zf: torch.Tensor) -> torch.Tensor:
-        x_pred_real = self.__shared_forward(torch.real(x_zf), self.encoder_real)
-        x_pred_imag = self.__shared_forward(torch.imag(x_zf), self.encoder_imag)
+    def forward(self, x_zf: torch.Tensor, t_coord=None) -> torch.Tensor:
+        x_pred_real = self.__shared_forward(torch.real(x_zf), self.encoder_real, t_coord)
+        x_pred_imag = self.__shared_forward(torch.imag(x_zf), self.encoder_imag, t_coord)
         x_pred = x_pred_real + 1j * x_pred_imag
 
         # (B, T, H, W)

@@ -154,12 +154,13 @@ class TrainLIIFCallback(Callback):
     """
     def __init__(self, params: dict):
         """
-        params: save_dir, save_interval, test_idx
+        params: save_dir, save_interval, test_idx, temporal_res: int = 50
         """
         super().__init__()
         self.params = params
         self.counter = -1
         self.params["save_dir"] = os.path.join(self.params["save_dir"], "screenshots/")
+        self.t_coord = torch.linspace(-1, 1, self.params["temporal_res"])
         if not os.path.isdir(self.params["save_dir"]):
             os.makedirs(self.params["save_dir"])
     
@@ -167,16 +168,23 @@ class TrainLIIFCallback(Callback):
         self.counter += 1
         img_test, measurement_test = trainer.datamodule.test_ds[self.params["test_idx"]]  # (T, H, W), (T, H, W, num_sens)
         if self.counter == 0:
-            torch.save(img_test.detach().cpu(), os.path.join(self.params["save_dir"], f"orig.pt"))
-            save_vol_as_gif(torch.abs(img_test), save_dir=self.params["save_dir"], filename=f"orig_mag.gif")
-            save_vol_as_gif(torch.angle(img_test), save_dir=self.params["save_dir"], filename=f"orig_phase.gif")
+            img_test_save = img_test.unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
+            torch.save(img_test_save.detach().cpu(), os.path.join(self.params["save_dir"], f"orig.pt"))
+            save_vol_as_gif(torch.abs(img_test_save), save_dir=self.params["save_dir"], filename=f"orig_mag.gif")
+            save_vol_as_gif(torch.angle(img_test_save), save_dir=self.params["save_dir"], filename=f"orig_phase.gif")
+
+            img_zf = trainer.datamodule.train_ds.lin_tfm.conj_op(measurement_test).unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
+            torch.save(img_zf.detach().cpu(), os.path.join(self.params["save_dir"], f"zf.pt"))
+            save_vol_as_gif(torch.abs(img_zf), save_dir=self.params["save_dir"], filename=f"zf_mag.gif")
+            save_vol_as_gif(torch.angle(img_zf), save_dir=self.params["save_dir"], filename=f"zf_phase.gif")
         
         if self.counter % self.params["save_interval"] != 0 and self.counter != trainer.max_epochs - 1:
             return
         
         img_test, measurement_test = img_test.unsqueeze(0), measurement_test.unsqueeze(0)  # (1, T, H, W), (1, T, H, W, num_sens)
         if_train = pl_module.model.training
-        pred = pl_module.predict_step(measurement_test, None).squeeze(0)  # (1, T, H, W) -> (T, H, W)
+        pred = pl_module.predict_step(measurement_test.to(ptu.DEVICE), None).squeeze(0)  # (1, T, H, W) -> (T, H, W)
+        pred = pred.unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
         torch.save(pred.detach().cpu(), os.path.join(self.params["save_dir"], f"recons_{self.counter + 1}.pt"))
         save_vol_as_gif(torch.abs(pred), save_dir=self.params["save_dir"], filename=f"mag_{self.counter + 1}.gif")
         save_vol_as_gif(torch.angle(pred), save_dir=self.params["save_dir"], filename=f"phase_{self.counter + 1}.gif")
@@ -185,3 +193,7 @@ class TrainLIIFCallback(Callback):
             pl_module.model.train()
         else:
             pl_module.model.eval()
+    
+    def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        return self.on_train_epoch_end(trainer, pl_module)
+    

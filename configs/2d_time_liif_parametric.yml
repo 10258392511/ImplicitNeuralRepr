@@ -6,13 +6,13 @@ model:
   name: "LIIFParametric"
   mlp:
     # in_features: 3  # must >= 2: 1 + feature_map_dim; should be overidden by unet.out_channels + 1
-    hidden_features: 32
+    hidden_features: 256
     out_features: 1
-    hidden_layers: 3
+    hidden_layers: 5
   unet:
     spatial_dims: 2
     in_channels: 25
-    out_channels: 3  # feature_map_dim
+    out_channels: 6  # feature_map_dim
     channels: [32, 64]
     strides: [2]
 
@@ -29,8 +29,8 @@ transforms:
 optimization:
   opt_name: "AdamW"
   opt_params: 
-    lr: !!float 1e-4
+    lr: !!float 1e-3
   scheduler_name: "StepLR"
   scheduler_params:
-    step_size: 50
+    step_size: 5
     gamma: 0.5
