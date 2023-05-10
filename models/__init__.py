@@ -3,7 +3,7 @@ import os
 
 from .siren import Siren, SirenComplex
 from .grid_sample import GridSample
-from .liif import LIIFParametric, LIIFNonParametric
+from .liif import LIIFParametric, LIIFParametricComplexSiren, LIIFNonParametric
 from ImplicitNeuralRepr.configs import load_config
 from typing import Union
 
@@ -15,7 +15,8 @@ for _ in range(2):
 MODEL_NAME_MAP = {
     "SirenComplex": SirenComplex,
     "LIIFParametric": LIIFParametric,
-    "LIIFNonParametric": LIIFNonParametric
+    "LIIFNonParametric": LIIFNonParametric,
+    "LIIFParametricComplexSiren": LIIFParametricComplexSiren
 }
 
 

@@ -3,16 +3,23 @@ dataset:
   train_test_split: 0.9
 
 model:
-  name: "LIIFParametric"
+  name: "LIIFParametricComplexSiren"
+  # mlp:
+  #   # in_features: 3  # must >= 2: 1 + feature_map_dim; should be overidden by unet.out_channels + 1
+  #   hidden_features: 256
+  #   out_features: 1
+  #   hidden_layers: 5
   mlp:
     # in_features: 3  # must >= 2: 1 + feature_map_dim; should be overidden by unet.out_channels + 1
-    hidden_features: 256
-    out_features: 1
-    hidden_layers: 5
+    hidden_features: 128
+    out_features: 2
+    hidden_layers: 4
+    outermost_linear: true
+    sine_portion: 1.
   unet:
     spatial_dims: 2
-    in_channels: 25
-    out_channels: 6  # feature_map_dim
+    in_channels: 50
+    out_channels: 8  # feature_map_dim
     channels: [32, 64]
     strides: [2]
 
@@ -32,5 +39,5 @@ optimization:
     lr: !!float 1e-3
   scheduler_name: "StepLR"
   scheduler_params:
-    step_size: 5
+    step_size: 10
     gamma: 0.5

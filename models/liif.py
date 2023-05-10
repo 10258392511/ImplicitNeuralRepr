@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 
 from monai.networks.nets import UNet
+from ImplicitNeuralRepr.models.siren import SirenComplex
 from einops import rearrange
 
 
@@ -65,6 +66,38 @@ class LIIFParametric(nn.Module):
 
         # (B, T, H, W)
         return x_pred.squeeze(-1)
+
+
+class LIIFParametricComplexSiren(nn.Module):
+    def __init__(self, params: dict):
+        super().__init__()
+        self.params = params
+        self.params["mlp"]["in_features"] = self.params["unet"]["out_channels"] + 1
+        self.encoder = UNet(**self.params["unet"])
+        self.mlp = SirenComplex(self.params["mlp"])
+    
+    def forward(self, x_zf: torch.Tensor, t_coord=None):
+        # x_zf: (B, T, H, W)
+        B, T, H, W = x_zf.shape
+        x_real = torch.real(x_zf)
+        x_imag = torch.imag(x_zf)
+        x = torch.cat([x_real, x_imag], dim=1)  # (B, 2 * T, H, W)
+        if t_coord is None:
+            t_coord = torch.linspace(-1, 1, T, device=x_zf.device)  # (T,)
+        else:
+            t_coord = t_coord.to(x_zf.device)
+            T = t_coord.shape[0]
+        x = self.encoder(x)  # (B, C, H, W)
+        x = torch.tanh(x)
+        x = rearrange(x, "B C H W -> B H W C")
+        t_coord = t_coord.reshape(1, T, 1, 1, 1)
+        t_coord_expanded = t_coord.expand(B, T, H, W, 1)
+        C = x.shape[-1]
+        x_expanded = x.reshape(B, 1, H, W, C).expand(B, T, H, W, C)
+        x_coord = torch.cat([x_expanded, t_coord_expanded], dim=-1)  # (B, T, H, W, C + 1)
+        x_pred = self.mlp(x_coord).squeeze(-1)  # (B, T, H, W, 1) -> (B, T, H, W)
+
+        return x_pred
 
         
 class LIIFNonParametric(nn.Module):

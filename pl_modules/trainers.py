@@ -587,13 +587,12 @@ class TrainLIIF(LightningModule):
         self.lin_tfm = lin_tfm
 
     @staticmethod
-    def compute_l1_loss_complex(x_pred: torch.Tensor, x: torch.Tensor):
+    def compute_l1_loss_complex(x_pred: torch.Tensor, x: torch.Tensor, eps=1e-4):
         # x_pred, x: (B, T, H, W)
-        x_diff = x_pred - x
-        loss_real = torch.abs(torch.real(x_diff)).sum(dim=(1, 2, 3))  # (B,)
-        loss_imag = torch.abs(torch.imag(x_diff)).sum(dim=(1, 2, 3))
-        loss = (loss_real + loss_imag).mean()
-
+        num = torch.abs(torch.abs(x_pred) - torch.abs(x)).sum(dim=(1, 2, 3))  # (B,)
+        den = torch.abs(x).sum(dim=(1, 2, 3)) + eps  # (B,)
+        loss = (num / den).mean()
+        
         return loss
     
     def __shared_step(self, batch: Any, batch_idx: int, t_coord: Union[torch.Tensor, None] = None) -> Union[STEP_OUTPUT, None]:

@@ -22,13 +22,16 @@ class SineLayer(nn.Module):
     # activations constant, but boost gradients to the weight matrix (see supplement Sec. 1.5)
 
     def __init__(self, in_features, out_features, bias=True,
-                 is_first=False, omega_0=30):
+                 is_first=False, omega_0=30, sine_portion=1., other_act=torch.relu):
         super().__init__()
         self.omega_0 = omega_0
         self.is_first = is_first
 
         self.in_features = in_features
         self.linear = nn.Linear(in_features, out_features, bias=bias)
+        self.sine_portion = sine_portion
+        self.sine_act = lambda x : torch.sin(self.omega_0 * x)
+        self.other_act = other_act
 
         self.init_weights()
 
@@ -42,17 +45,24 @@ class SineLayer(nn.Module):
                                             np.sqrt(6 / self.in_features) / self.omega_0)
 
     def forward(self, input):
-        return torch.sin(self.omega_0 * self.linear(input))
+        x = self.linear(input)
+        D = x.shape[-1]
+        act_partition_idx = int(D * self.sine_portion)
+        x_out = torch.zeros_like(x)
+        x_out[..., :act_partition_idx] = self.sine_act(x[..., :act_partition_idx])
+        x_out[..., act_partition_idx:] = self.other_act(x[..., act_partition_idx:])
 
-    def forward_with_intermediate(self, input):
-        # For visualization of activation distributions
-        intermediate = self.omega_0 * self.linear(input)
-        return torch.sin(intermediate), intermediate
+        return x_out
+
+    # def forward_with_intermediate(self, input):
+    #     # For visualization of activation distributions
+    #     intermediate = self.omega_0 * self.linear(input)
+    #     return torch.sin(intermediate), intermediate
 
 
 class Siren(nn.Module):
     def __init__(self, in_features, hidden_features, hidden_layers, out_features, outermost_linear=False,
-                 first_omega_0=30, hidden_omega_0=30.):
+                 first_omega_0=30, hidden_omega_0=30., sine_portion=1., other_act=torch.relu):
         super().__init__()
 
         self.net = []
@@ -87,7 +97,7 @@ class SirenComplex(nn.Module):
     def __init__(self, params):
         """
         params: in_features, hidden_features, hidden_layers, out_features, 
-                outermost_linear: bool, first_omega_0, hidden_omega_0
+                outermost_linear: bool, first_omega_0, hidden_omega_0, sine_portion, other_act = torch.relu
         """
         super().__init__()
         self.params = params
