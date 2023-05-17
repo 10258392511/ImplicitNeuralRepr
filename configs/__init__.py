@@ -38,3 +38,11 @@ def load_config(task_name: str) -> dict:
         config_dict = yaml.load(rf, yaml.Loader)
     
     return config_dict
+
+
+def load_mask_config() -> dict:
+    mask_config_filename = os.path.join(ROOT, "configs", "mask_configs.yml")
+    with open(mask_config_filename, "r") as rf:
+        config_dict = yaml.load(rf, yaml.Loader)
+    
+    return config_dict

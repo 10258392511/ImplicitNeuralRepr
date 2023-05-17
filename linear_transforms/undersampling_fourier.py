@@ -1,13 +1,15 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 from scipy.spatial import distance_matrix
 from .base import i2k_complex, k2i_complex, generate_mask, LinearTransform
+from einops import rearrange
 from typing import Union
 
 
 class RandomUndersamplingFourier(LinearTransform):
-    def __init__(self, in_shape, mask_params, seed=None):
+    def __init__(self, in_shape, mask_params, undersample_t=1., seed=None):
         """
         in_shape: (..., H, W) or (..., T, H, W)
         mask_params: sw, sm, sa, T_max, if_temporal (True: view in_shape[-3] as T)
@@ -21,13 +23,23 @@ class RandomUndersamplingFourier(LinearTransform):
         if "if_temporal" in self.mask_params:
             self.mask_params.pop("if_temporal")
         self.mask = generate_mask(T, N, seed=seed, **self.mask_params)  # (H, W) or (T, H, W)
+        self.undersample_t = undersample_t
 
     def __call__(self, X: torch.Tensor, t_indices: Union[torch.Tensor, None]) -> torch.Tensor:
         # X: (..., H, W) or (..., T, H, W)
         mask = self.mask.to(X.device)
         if t_indices is not None:
             mask = mask[t_indices, :, :]
-        S = mask * i2k_complex(X)  # (..., H, W) or (..., T, H, W)
+        S = i2k_complex(X)  # (..., H, W) or (..., T, H, W)
+        if self.undersample_t > 1:
+            assert S.ndim >= 4
+            S = torch.view_as_real(S)  # (B, T, H, W, 2)
+            B, T, H, W, C = S.shape
+            S = rearrange(S, "B T H W C -> B (C H W) T")
+            S = F.interpolate(S, size=int(T / self.undersample_t), mode="linear")
+            S = rearrange(S, "B (C H W) T -> B T H W C", C=C, H=H, W=W)
+            S = torch.view_as_complex(S.contiguous())  # (B, T', H, W)
+        S = mask * S  # (..., H, W) or (..., T, H, W)
 
         return S
 
@@ -38,12 +50,12 @@ class RandomUndersamplingFourier(LinearTransform):
     
 
 class SENSE(LinearTransform):
-    def __init__(self, sens_type, num_sens, in_shape, mask_params, seed=None):
+    def __init__(self, sens_type, num_sens, in_shape, mask_params, undersample_t=1., seed=None):
         """
         in_shape, mask_params: see RandomUndersamplingFourier
         """
         assert sens_type in ["exp"]
-        self.random_under_fourier = RandomUndersamplingFourier(in_shape, mask_params, seed)
+        self.random_under_fourier = RandomUndersamplingFourier(in_shape, mask_params, undersample_t, seed)
         sens_maps = []
         for i in range(num_sens):
             seed = self.random_under_fourier.seed

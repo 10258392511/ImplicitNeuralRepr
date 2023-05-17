@@ -6,7 +6,7 @@ import glob
 
 from torch.utils.data import TensorDataset, Dataset, DataLoader
 from einops import rearrange
-from ImplicitNeuralRepr.linear_transforms import LinearTransform
+from ImplicitNeuralRepr.linear_transforms import LinearTransform, SENSE
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from monai.transforms import Resize as monai_Resize
@@ -155,4 +155,22 @@ class CINEImageKSPDM(LightningDataModule):
     def predict_dataloader(self) -> EVAL_DATALOADERS:
         
         return self.__shared_val_dataloader()
+    
+
+class CINEImageKSDownSampleDataset(Dataset):
+    def __init__(self, params: dict, mask_config: dict):
+        """
+        params: mode: str {train | val | test}, res: int {64 | 127}, T = 25, num_sens = 2, seed: int or None, train_test_split: float
+        """
+        super().__init__()
+        self.max_undersampling_rate = 6
+        self.scales = np.array([1, 2, 3])
+        self.undersampling_rates = self.max_undersampling_rate // self.scales
+        self.params = params
+        self.mask_config = mask_config
+    
+    def __init_lin_tfm(self, undersampling_rate: int):
+        mask_params = self.mask_config[undersampling_rate]
+
+
     
