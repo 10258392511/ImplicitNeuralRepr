@@ -8,6 +8,10 @@ ROOT = os.path.abspath(__file__)
 for _ in range(2):
     ROOT = os.path.dirname(ROOT)
 
+IMAGE_KEY = "IMAGE"
+MEASUREMENT_KEY = "MEASUREMENT"
+COORD_KEY = "COORD"
+
 
 CONFIG_PATHS = {
     "spatial": os.path.join(ROOT, "configs", "spatial.yml"),

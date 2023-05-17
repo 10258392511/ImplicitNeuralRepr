@@ -10,6 +10,7 @@ from ImplicitNeuralRepr.linear_transforms import LinearTransform, SENSE
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from monai.transforms import Resize as monai_Resize
+from ImplicitNeuralRepr.configs import IMAGE_KEY, MEASUREMENT_KEY, COORD_KEY
 from typing import Union
 
 ROOT_DIR = os.path.abspath(__file__)
@@ -176,8 +177,12 @@ class CINEImageKSDownSampleDataset(Dataset):
         self.params = params
         self.mask_config = mask_config
         self.lin_tfm_dict = {}
+        self.res = self.params["res"]
+        if self.res == 127:
+            self.res = 128
         for scale_iter, u_rate_iter in zip(self.scales, self.undersampling_rates):
             self.__init_lin_tfm(scale_iter, u_rate_iter)  # keys: 2., 3., 6.
+        
         
         # load CINE64/127
         if self.params["res"] == 64:
@@ -213,13 +218,13 @@ class CINEImageKSDownSampleDataset(Dataset):
         scale * undersampling_rate = .max_undersampling_rate
         """
         mask_params = self.mask_config[undersampling_rate]
-        T_in = int(self.params["T"] / scale)
+        T_in = self.input_T if self.params["mode"] != "test" else self.params["T"]
         seed = self.params["seed"]
 
         lin_tfm_params = {
             "sens_type": "exp",
             "num_sens": 2,
-            "in_shape": (T_in, self.params["res"], self.params["res"]),
+            "in_shape": (T_in, self.res, self.res),
             "mask_params": {"if_temporal": True, **mask_params},
             "undersample_t": scale,
             "seed": seed
@@ -234,8 +239,14 @@ class CINEImageKSDownSampleDataset(Dataset):
             # no data augmentation
             img = self.cine_ds[idx]  # (T, H, W)
             measurement = self.lin_tfm_dict[self.max_undersampling_rate](img)  # R = 6
+            coord = torch.linspace(-1, 1, self.params["T"])
+            out_dict = {
+                IMAGE_KEY: img,
+                MEASUREMENT_KEY: measurement,
+                COORD_KEY: coord
+            }
 
-            return img, measurement
+            return out_dict
         
         # data augmentation: adding phase, downsampling t, undersampling mask & random cropping
         if self.params["mode"] == "train":
@@ -257,13 +268,26 @@ class CINEImageKSDownSampleDataset(Dataset):
         win_size = int(scale * self.input_T)
         t_start = np.random.randint(T - win_size + 1)
         img = img[:, t_start:t_start + win_size, ...]  # (1, T', H, W)
+        t_grid = torch.linspace(-1, 1, win_size)  # (T',)
+        if self.params["mode"] == "train":
+            sampled_t_inds = torch.randperm(win_size)[:self.input_T]  # (T0,)
+        else:
+            sampled_t_inds = torch.arange(0, t_grid.shape[0], scale).long()
+        img_sampled = img[:, sampled_t_inds, ...]  # (1, T0, H, W)
+        t_grid_sampled = t_grid[sampled_t_inds]  # (T0,)
 
         # downsampling t & undersampling mask
         lin_tfm = self.lin_tfm_dict[undersampling_rate]
         measurement = lin_tfm(img)  # (1, T0, H, W, num_sens)
 
         # img: (T', H, W) (high res), measurement: (T0, H, W, num_sens)
-        return img.squeeze(0), measurement.squeeze(0)
+        out_dict = {
+            IMAGE_KEY: img_sampled.squeeze(0),
+            MEASUREMENT_KEY: measurement.squeeze(0),
+            COORD_KEY: t_grid_sampled
+        }
+        
+        return out_dict
 
 
 class CINEImageKSDownSampleDM(LightningDataModule):
@@ -273,13 +297,15 @@ class CINEImageKSDownSampleDM(LightningDataModule):
                     batch_size: int, (test_batch_size: int), num_workers: int = 0
         """
         super().__init__()
-        self.params = params
-        params["mode"] = "train"
-        self.train_ds = CINEImageKSDownSampleDataset(params, mask_config)
-        params["mode"] = "val"
-        self.val_ds = CINEImageKSDownSampleDataset(params, mask_config)
-        params["mode"] = "test"
-        self.test_ds = CINEImageKSDownSampleDataset(params, mask_config)
+        self.params = params.copy()
+        self.params["mode"] = "train"
+        self.train_ds = CINEImageKSDownSampleDataset(self.params, mask_config)
+        self.params = params.copy()
+        self.params["mode"] = "val"
+        self.val_ds = CINEImageKSDownSampleDataset(self.params, mask_config)
+        self.params = params.copy()
+        self.params["mode"] = "test"
+        self.test_ds = CINEImageKSDownSampleDataset(self.params, mask_config)
 
     def prepare_data(self) -> None:
         return super().prepare_data()
