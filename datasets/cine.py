@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 import scipy.io as sio
-import random
 import os
 import glob
 
@@ -197,17 +196,17 @@ class CINEImageKSDownSampleDataset(Dataset):
         if seed is not None:
             np.random.seed(seed)
         indices = np.arange(len(self.cine_ds))
+        np.random.shuffle(indices)
         if self.params["mode"] == "test":
-            self.indices = indices  # return all images for evaluation without cropping in T-axis
+            self.indices = indices  # return all images for evaluation without cropping in T-axis; callback: using the last image
         else:
-            np.random.shuffle(indices)
             split_idx = int(len(self.cine_ds) * self.params["train_val_split"])
             if self.params["mode"] == "train":
                 self.indices = indices[:split_idx]
             elif self.params["mode"] == "val":
                 self.indices = indices[split_idx:]
             else:
-                raise KeyError("Invalid mode.")
+                raise KeyError("Invalid mode")
     
     def __init_lin_tfm(self, scale: float, undersampling_rate: float):
         """
@@ -266,3 +265,41 @@ class CINEImageKSDownSampleDataset(Dataset):
         # img: (T', H, W) (high res), measurement: (T0, H, W, num_sens)
         return img.squeeze(0), measurement.squeeze(0)
 
+
+class CINEImageKSDownSampleDM(LightningDataModule):
+    def __init__(self, params: dict):
+        """
+        params: see CINEImageKSDownSampleDataset
+                    batch_size: int, (test_batch_size: int), num_workers: int = 0
+        """
+        super().__init__()
+        self.params = params
+        params["mode"] = "train"
+        self.train_ds = CINEImageKSDownSampleDataset(params)
+        params["mode"] = "val"
+        self.val_ds = CINEImageKSDownSampleDataset(params)
+        params["mode"] = "test"
+        self.test_ds = CINEImageKSDownSampleDataset(params)
+
+    def prepare_data(self) -> None:
+        return super().prepare_data()
+    
+    def setup(self, stage: Union[str, None] = None) -> None:
+        return super().setup(stage)
+    
+    def train_dataloader(self) -> TRAIN_DATALOADERS:
+        loader = DataLoader(self.train_ds, self.params["batch_size"], shuffle=True, pin_memory=True)
+
+        return loader
+    
+    def val_dataloader(self) -> EVAL_DATALOADERS:
+        loader = DataLoader(self.val_ds, self.params["batch_size"], pin_memory=True)
+
+        return loader
+    
+    def predict_dataloader(self) -> EVAL_DATALOADERS:
+        batch_size = self.params.get("test_batch_size", self.params["batch_size"])
+        loader = DataLoader(self.test_ds, batch_size, pin_memory=True)
+
+        return loader
+    
