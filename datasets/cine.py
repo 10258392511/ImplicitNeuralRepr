@@ -187,9 +187,9 @@ class CINEImageKSDownSampleDataset(Dataset):
             self.resizer = monai_Resize((25, 128, 128), mode="trilinear", align_corners=True)
         else:
             raise NotImplementedError
-        self.cine_ds = load_cine(DATA_PATHS[vol_name])  # (N, T, H, W)
+        self.cine_ds = load_cine(DATA_PATHS[vol_name], if_return_tensor=True)  # (N, T, H, W)
         if self.params["res"] == 127:
-            self.cine_ds = self.resizer(self.cine_ds.unsqueeze(1)).squeeze(1)  # (N, T, H', W')
+            self.cine_ds = self.resizer(self.cine_ds)  # (N, T, H', W')
 
         # train-val split
         seed = self.params.get("seed", None)
@@ -220,7 +220,7 @@ class CINEImageKSDownSampleDataset(Dataset):
             "sens_type": "exp",
             "num_sens": 2,
             "in_shape": (T_in, self.params["res"], self.params["res"]),
-            "mask_params": {"if_temporal": True, "seed": seed, **mask_params},
+            "mask_params": {"if_temporal": True, **mask_params},
             "undersample_t": scale,
             "seed": seed
         }
@@ -267,7 +267,7 @@ class CINEImageKSDownSampleDataset(Dataset):
 
 
 class CINEImageKSDownSampleDM(LightningDataModule):
-    def __init__(self, params: dict):
+    def __init__(self, params: dict, mask_config: dict):
         """
         params: see CINEImageKSDownSampleDataset
                     batch_size: int, (test_batch_size: int), num_workers: int = 0
@@ -275,11 +275,11 @@ class CINEImageKSDownSampleDM(LightningDataModule):
         super().__init__()
         self.params = params
         params["mode"] = "train"
-        self.train_ds = CINEImageKSDownSampleDataset(params)
+        self.train_ds = CINEImageKSDownSampleDataset(params, mask_config)
         params["mode"] = "val"
-        self.val_ds = CINEImageKSDownSampleDataset(params)
+        self.val_ds = CINEImageKSDownSampleDataset(params, mask_config)
         params["mode"] = "test"
-        self.test_ds = CINEImageKSDownSampleDataset(params)
+        self.test_ds = CINEImageKSDownSampleDataset(params, mask_config)
 
     def prepare_data(self) -> None:
         return super().prepare_data()

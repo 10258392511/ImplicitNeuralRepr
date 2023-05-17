@@ -1,6 +1,10 @@
 dataset:
+  # mode: "train"  # no need to specify; set in DM
+  res: 127
+  T: 25
+  num_sens: 2
   seed: 0
-  train_test_split: 0.9
+  train_val_split: 0.9
 
 model:
   name: "LIIFParametricComplexSiren"
@@ -18,18 +22,18 @@ model:
     channels: [32, 64]
     strides: [2]
 
-transforms:
-  dc:
-    name: "SENSE"
-    sens_type: "exp"
-    num_sens: 2
-    in_shape: [25, 128, 128]
-    mask_params: 
-      sw: 0.15
-      sm: 0.7
-      sa: 0.057535
-      if_temporal: true
-    seed: 0
+# transforms:
+#   dc:
+#     name: "SENSE"
+#     sens_type: "exp"
+#     num_sens: 2
+#     in_shape: [25, 128, 128]
+#     mask_params: 
+#       sw: 0.15
+#       sm: 0.7
+#       sa: 0.057535
+#       if_temporal: true
+#     seed: 0
 
 optimization:
   opt_name: "AdamW"

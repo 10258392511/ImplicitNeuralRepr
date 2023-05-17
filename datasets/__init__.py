@@ -4,7 +4,8 @@ import os
 from .cine import (
     load_cine,
     add_phase,
-    CINEImageKSPDM
+    CINEImageKSPDM,
+    CINEImageKSDownSampleDM
 )
 from .coord import MetaCoordDM, CoordDataset, WrapperDM
 from .coord_datasets_separate import (
