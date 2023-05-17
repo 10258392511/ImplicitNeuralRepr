@@ -10,7 +10,7 @@ from ImplicitNeuralRepr.linear_transforms import LinearTransform, SENSE
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from monai.transforms import Resize as monai_Resize
-from ImplicitNeuralRepr.configs import IMAGE_KEY, MEASUREMENT_KEY, COORD_KEY
+from ImplicitNeuralRepr.configs import IMAGE_KEY, MEASUREMENT_KEY, ZF_KEY, COORD_KEY
 from typing import Union
 
 ROOT_DIR = os.path.abspath(__file__)
@@ -229,7 +229,7 @@ class CINEImageKSDownSampleDataset(Dataset):
             "seed": seed
         }
         self.lin_tfm_dict[undersampling_rate] = SENSE(**lin_tfm_params)
-    
+
     def __len__(self):
         return self.cine_ds.shape[0]
     
@@ -237,12 +237,14 @@ class CINEImageKSDownSampleDataset(Dataset):
         if self.params["mode"] == "test":
             # no data augmentation
             img = self.cine_ds[idx]  # (T, H, W)
-            measurement = self.lin_tfm_dict[self.max_undersampling_rate](img)  # R = 6
+            lin_tfm = self.lin_tfm_dict[self.max_undersampling_rate]
+            measurement = lin_tfm(img)  # R = 6
             coord = torch.linspace(-1, 1, self.params["T"])
             out_dict = {
-                IMAGE_KEY: img,
+                IMAGE_KEY: img,  # (T, H, W)
                 MEASUREMENT_KEY: measurement,
-                COORD_KEY: coord
+                ZF_KEY: lin_tfm.conj_op(measurement),
+                COORD_KEY: coord  # (T,)
             }
 
             return out_dict
@@ -280,10 +282,13 @@ class CINEImageKSDownSampleDataset(Dataset):
         measurement = lin_tfm(img)  # (1, T0, H, W, num_sens)
 
         # img: (T', H, W) (high res), measurement: (T0, H, W, num_sens)
+        img_sampled = img_sampled.squeeze(0)  # (1, T0, H, W) -> (T0, H, W)
+        measurement = measurement.squeeze(0)  # (1, T0, H, W, num_sens) -> (T0, H, W, num_sens)
         out_dict = {
-            IMAGE_KEY: img_sampled.squeeze(0),
-            MEASUREMENT_KEY: measurement.squeeze(0),
-            COORD_KEY: t_grid_sampled
+            IMAGE_KEY: img_sampled,  # (T0, H, W)
+            MEASUREMENT_KEY: measurement,
+            ZF_KEY: lin_tfm.conj_op(measurement),
+            COORD_KEY: t_grid_sampled  # (T0,)
         }
         
         return out_dict

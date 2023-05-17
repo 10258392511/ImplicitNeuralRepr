@@ -10,6 +10,7 @@ for _ in range(2):
 
 IMAGE_KEY = "IMAGE"
 MEASUREMENT_KEY = "MEASUREMENT"
+ZF_KEY = "ZF"
 COORD_KEY = "COORD"
 
 

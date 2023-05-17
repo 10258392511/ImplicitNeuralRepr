@@ -186,8 +186,8 @@ class LIIFParametric3DConv(nn.Module):
             preds.append(pred)
             dists.appendleft(dist)
         
-        preds = torch.stack(preds, dim=0)  # [(B, T', H, W)...] -> (2, B, T', H, W)
-        dists = torch.stack(dists, dim=0).reshape(-1, B, T_coord, 1, 1)  # [(B, T')...] -> (2, B, T') -> (2, B, T', 1, 1)
+        preds = torch.stack(list(preds), dim=0)  # [(B, T', H, W)...] -> (2, B, T', H, W)
+        dists = torch.stack(list(dists), dim=0).reshape(-1, B, T_coord, H, W)  # [(B, T')...] -> (2, B, T') -> (2, B, T', 1, 1)
         pred = preds * dists / dists.sum(dim=0)  # (2, B, T', H, W)
         pred = pred.sum(dim=0)  
 
