@@ -7,7 +7,8 @@ dataset:
   train_val_split: 0.9
 
 model:
-  name: "LIIFParametricComplexSiren"
+  name: "LIIFParametric3DConv"
+  eps_shift: !!float 1e-6
   mlp:
     # in_features: 3  # must >= 2: 1 + feature_map_dim; should be overidden by unet.out_channels + 1
     hidden_features: 128

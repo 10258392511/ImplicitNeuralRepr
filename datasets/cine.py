@@ -183,7 +183,6 @@ class CINEImageKSDownSampleDataset(Dataset):
         for scale_iter, u_rate_iter in zip(self.scales, self.undersampling_rates):
             self.__init_lin_tfm(scale_iter, u_rate_iter)  # keys: 2., 3., 6.
         
-        
         # load CINE64/127
         if self.params["res"] == 64:
             vol_name = "CINE64"

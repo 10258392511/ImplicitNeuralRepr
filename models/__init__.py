@@ -3,7 +3,12 @@ import os
 
 from .siren import Siren, SirenComplex
 from .grid_sample import GridSample
-from .liif import LIIFParametric, LIIFParametricComplexSiren, LIIFNonParametric
+from .liif import (
+    LIIFParametric, 
+    LIIFParametricComplexSiren, 
+    LIIFNonParametric,
+    LIIFParametric3DConv
+)
 from ImplicitNeuralRepr.configs import load_config
 from typing import Union
 
@@ -16,7 +21,8 @@ MODEL_NAME_MAP = {
     "SirenComplex": SirenComplex,
     "LIIFParametric": LIIFParametric,
     "LIIFNonParametric": LIIFNonParametric,
-    "LIIFParametricComplexSiren": LIIFParametricComplexSiren
+    "LIIFParametricComplexSiren": LIIFParametricComplexSiren,
+    "LIIFParametric3DConv": LIIFParametric3DConv
 }
 
 
