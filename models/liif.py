@@ -1,12 +1,14 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from monai.networks.nets import UNet
 from ImplicitNeuralRepr.models.siren import SirenComplex
 from collections import deque
 from einops import rearrange
+from tqdm import trange
 
 
 class MLP(nn.Module):
@@ -193,3 +195,24 @@ class LIIFParametric3DConv(nn.Module):
 
         # (B, T', H, W)
         return pred
+
+
+@torch.no_grad()
+def sliding_window_inference(x_zf: torch.Tensor, upsample_rate: float, roi_size: int, overlap: float, predictor: nn.Module) -> torch.Tensor:
+    """
+    x_zf: (B, T, H, W), roi_size: T0
+    Twice: forward and backward to accomodate corners 
+    """
+    if_train = predictor.training
+    predictor.eval()
+
+    B, T, H, W = x_zf.shape
+    T_out_per_window = int(roi_size * upsample_rate)  # T'
+    t_coord = torch.linspace(-1, 1, T_out_per_window).unsqueeze(0).expand(B, -1)  # (B, T')
+    # x_zf = rearrange(x_zf, "B T H W -> B (H W) T").unsqueeze(-1)  # (B, H * W, T, 1)
+    stride = int(roi_size * overlap)
+    # x_zf_unfolded = F.unfold(x_zf, (roi_size, 1), stride=stride)  # (B, H * W * T0, L)
+    # x_zf = rearrange(x_zf_unfolded, "B (H W T0) L -> (B L)")
+
+    if if_train:
+        predictor.train()

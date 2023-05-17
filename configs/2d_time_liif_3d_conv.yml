@@ -1,5 +1,6 @@
 dataset:
   # mode: "train"  # no need to specify; set in DM
+  input_T: 8
   res: 127
   T: 25
   num_sens: 2
@@ -22,19 +23,6 @@ model:
     out_channels: 8  # feature_map_dim
     channels: [32, 64]
     strides: [2]
-
-# transforms:
-#   dc:
-#     name: "SENSE"
-#     sens_type: "exp"
-#     num_sens: 2
-#     in_shape: [25, 128, 128]
-#     mask_params: 
-#       sw: 0.15
-#       sm: 0.7
-#       sa: 0.057535
-#       if_temporal: true
-#     seed: 0
 
 optimization:
   opt_name: "AdamW"

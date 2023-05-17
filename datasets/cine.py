@@ -166,15 +166,16 @@ class CINEImageKSDownSampleDataset(Dataset):
         params: mode: str {train | val | test}, res: int {64 | 127}, T = 25, num_sens = 2, seed: int or None, train_val_split: float
         """
         super().__init__()
+        self.params = params
+
         # fixed settings
-        self.input_T = 8
+        self.input_T = self.params["input_T"]
         self.max_undersampling_rate = 6.
         self.scales = np.array([1., 2., 3.])
         self.undersampling_rates = self.max_undersampling_rate / self.scales  # [6., 3., 2.]
         self.max_seed = 10000
 
         # init SENSE for all R
-        self.params = params
         self.mask_config = mask_config
         self.lin_tfm_dict = {}
         self.res = self.params["res"]
