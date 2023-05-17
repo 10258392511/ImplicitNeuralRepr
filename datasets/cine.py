@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import scipy.io as sio
+import random
 import os
 import glob
 
@@ -22,7 +23,7 @@ DATA_PATHS = {
 }
 
 
-def load_cine(root_dir, mode="train", img_key="imgs", ds_type="2d+time"):
+def load_cine(root_dir, mode="train", img_key="imgs", ds_type="2d+time", if_return_tensor=False):
     """
     "mode" is not used
     """
@@ -39,6 +40,9 @@ def load_cine(root_dir, mode="train", img_key="imgs", ds_type="2d+time"):
         ds = rearrange(ds, "N T H W -> (N T) H W")
 
     ds = torch.FloatTensor(ds)
+    if if_return_tensor:
+        return ds
+    
     ds = TensorDataset(ds)
 
     return ds
@@ -86,7 +90,6 @@ class CINEImageKSPDataset(Dataset):
         elif self.params["res"] == 127:
             vol_name = "CINE127"
             self.resizer = monai_Resize((25, 128, 128), mode="trilinear", align_corners=True)
-
         else:
             raise NotImplementedError
         self.cine_ds = load_cine(DATA_PATHS[vol_name])  # (N, T, H, W)
@@ -160,17 +163,106 @@ class CINEImageKSPDM(LightningDataModule):
 class CINEImageKSDownSampleDataset(Dataset):
     def __init__(self, params: dict, mask_config: dict):
         """
-        params: mode: str {train | val | test}, res: int {64 | 127}, T = 25, num_sens = 2, seed: int or None, train_test_split: float
+        params: mode: str {train | val | test}, res: int {64 | 127}, T = 25, num_sens = 2, seed: int or None, train_val_split: float
         """
         super().__init__()
-        self.max_undersampling_rate = 6
-        self.scales = np.array([1, 2, 3])
-        self.undersampling_rates = self.max_undersampling_rate // self.scales
+        # fixed settings
+        self.input_T = 8
+        self.max_undersampling_rate = 6.
+        self.scales = np.array([1., 2., 3.])
+        self.undersampling_rates = self.max_undersampling_rate / self.scales  # [6., 3., 2.]
+        self.max_seed = 10000
+
+        # init SENSE for all R
         self.params = params
         self.mask_config = mask_config
+        self.lin_tfm_dict = {}
+        for scale_iter, u_rate_iter in zip(self.scales, self.undersampling_rates):
+            self.__init_lin_tfm(scale_iter, u_rate_iter)  # keys: 2., 3., 6.
+        
+        # load CINE64/127
+        if self.params["res"] == 64:
+            vol_name = "CINE64"
+        elif self.params["res"] == 127:
+            vol_name = "CINE127"
+            self.resizer = monai_Resize((25, 128, 128), mode="trilinear", align_corners=True)
+        else:
+            raise NotImplementedError
+        self.cine_ds = load_cine(DATA_PATHS[vol_name])  # (N, T, H, W)
+        if self.params["res"] == 127:
+            self.cine_ds = self.resizer(self.cine_ds.unsqueeze(1)).squeeze(1)  # (N, T, H', W')
+
+        # train-val split
+        seed = self.params.get("seed", None)
+        if seed is not None:
+            np.random.seed(seed)
+        indices = np.arange(len(self.cine_ds))
+        if self.params["mode"] == "test":
+            self.indices = indices  # return all images for evaluation without cropping in T-axis
+        else:
+            np.random.shuffle(indices)
+            split_idx = int(len(self.cine_ds) * self.params["train_val_split"])
+            if self.params["mode"] == "train":
+                self.indices = indices[:split_idx]
+            elif self.params["mode"] == "val":
+                self.indices = indices[split_idx:]
+            else:
+                raise KeyError("Invalid mode.")
     
-    def __init_lin_tfm(self, undersampling_rate: int):
+    def __init_lin_tfm(self, scale: float, undersampling_rate: float):
+        """
+        scale * undersampling_rate = .max_undersampling_rate
+        """
         mask_params = self.mask_config[undersampling_rate]
+        T_in = int(self.params["T"] / scale)
+        seed = self.params["seed"]
 
-
+        lin_tfm_params = {
+            "sens_type": "exp",
+            "num_sens": 2,
+            "in_shape": (T_in, self.params["res"], self.params["res"]),
+            "mask_params": {"if_temporal": True, "seed": seed, **mask_params},
+            "undersample_t": scale,
+            "seed": seed
+        }
+        self.lin_tfm_dict[undersampling_rate] = SENSE(**lin_tfm_params)
     
+    def __len__(self):
+        return self.cine_ds.shape[0]
+    
+    def __getitem__(self, idx):
+        if self.params["mode"] == "test":
+            # no data augmentation
+            img = self.cine_ds[idx]  # (T, H, W)
+            measurement = self.lin_tfm_dict[self.max_undersampling_rate](img)  # R = 6
+
+            return img, measurement
+        
+        # data augmentation: adding phase, downsampling t, undersampling mask & random cropping
+        if self.params["mode"] == "train":
+            seed = np.random.randint(self.max_seed)
+        else:
+            seed = self.params["seed"] + idx # val: fixed seed
+
+        # adding phase
+        img = self.cine_ds[idx]  # (T, H, W)        
+        img = add_phase(img[:, None, ...], init_shape=(5, 5, 5),  seed=seed, mode="2d+time")
+        img = img[:, 0, ...]  # (T, 1, H, W) -> (T, H, W)
+        img = img[None, ...]  # (1, T, H, W)
+        T = img.shape[1]
+
+        # random cropping
+        scale_idx = np.random.randint(len(self.scales)) if self.params["mode"] == "train" else idx % len(self.undersampling_rates)
+        scale = self.scales[scale_idx]
+        undersampling_rate = self.undersampling_rates[scale_idx]
+        win_size = int(scale * self.input_T)
+        t_start = np.random.randint(T - win_size + 1)
+        img = img[:, t_start:t_start + win_size, ...]  # (1, T', H, W)
+
+        # downsampling t & undersampling mask
+        lin_tfm = self.lin_tfm_dict[undersampling_rate]
+        measurement = lin_tfm(img)  # (1, T0, H, W, num_sens)
+
+        # img: (T', H, W) (high res), measurement: (T0, H, W, num_sens)
+        return img.squeeze(0), measurement.squeeze(0)
+
