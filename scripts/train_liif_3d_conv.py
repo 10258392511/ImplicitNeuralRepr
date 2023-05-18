@@ -15,7 +15,6 @@ import time
 import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from ImplicitNeuralRepr.configs import load_config, load_mask_config
-from ImplicitNeuralRepr.linear_transforms import load_linear_transform
 from ImplicitNeuralRepr.datasets import CINEImageKSDownSampleDM
 from ImplicitNeuralRepr.models import load_model, reload_model
 from ImplicitNeuralRepr.utils.utils import vis_images
@@ -38,7 +37,6 @@ if __name__ == "__main__":
     parser.add_argument("--test_batch_size", type=int, default=4)
     parser.add_argument("--num_workers", type=int, default=0)
     # Callback
-    parser.add_argument("--temporal_res", type=int, default=50)
     parser.add_argument("--test_idx", type=int, default=-1)
     # sliding window inference
     parser.add_argument("--upsample_rates", type=float, nargs="+", default=[1., 4.])
@@ -99,9 +97,9 @@ if __name__ == "__main__":
     model = load_model(args_dict["task_name"])
     lit_model = TrainLIIF3DConv(model, config_dict)
 
-    if args_dict["if_pred"]:
+    if args_dict["if_pred"] and (not args_dict["if_train"]):
         ckpt_path = reload_model(args_dict["task_name"])
-        lit_model.load_from_checkpoint(ckpt_path, model=model, config_dict=config_dict, lin_tfm=lin_tfm)
+        lit_model.load_from_checkpoint(ckpt_path, model=model, config_dict=config_dict)
 
     time_stamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
     log_dir = os.path.join(args_dict["log_dir"], time_stamp)
@@ -126,7 +124,9 @@ if __name__ == "__main__":
         "save_dir": args_dict["output_dir"],
         "save_interval": args_dict["val_interval"],
         "test_idx": args_dict["test_idx"],
-        "temporal_res": args_dict["temporal_res"]
+        "upsample_rates": args_dict["upsample_rates"],
+        "roi_size": config_dict["dataset"]["input_T"],
+        "overlap": args_dict["overlap"]
     }
     train_callback = TrainLIIF3DConvCallback(train_callback_params)
     callbacks.append(train_callback)
@@ -158,8 +158,10 @@ if __name__ == "__main__":
             wf.write(f"training time: {time_duration}\n")
 
     if args_dict["if_pred"]:
+        print("-" * 100)
+        print("Predicting...")
         all_preds = trainer.predict(lit_model, datamodule=dm)  # [((B_test, T, H, W), float)]
-        all_errors = np.array([item[1] for item in all_preds])
+        all_errors = np.concatenate([item[1] for item in all_preds], axis=0)  # (N_all,)
         train_val_split_idx = len(dm.train_ds)
         metric_dict = {
             "train_error": all_errors[:train_val_split_idx].mean(),
@@ -168,5 +170,5 @@ if __name__ == "__main__":
         with open(os.path.join(args_dict["output_dir"], "args_dict.txt"), "a") as wf:
             wf.write("-" * 100)
             wf.write("\n")
-            wf.write(metric_dict)
-            
+            for key, val in metric_dict.items():
+                wf.write(f"{key}: {val}\n")

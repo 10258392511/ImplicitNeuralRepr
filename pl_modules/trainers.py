@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 import pickle
+import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from pytorch_lightning import LightningModule
 from ImplicitNeuralRepr.datasets import val2idx
@@ -651,11 +652,13 @@ class TrainLIIF3DConv(LightningModule):
         self.config = config
 
     @staticmethod
-    def compute_l1_loss_complex(x_pred: torch.Tensor, x: torch.Tensor, eps=1e-4):
+    def compute_l1_loss_complex(x_pred: torch.Tensor, x: torch.Tensor, eps=1e-4, if_reduce=True):
         # x_pred, x: (B, T, H, W)
         num = torch.abs(torch.abs(x_pred) - torch.abs(x)).sum(dim=(1, 2, 3))  # (B,)
         den = torch.abs(x).sum(dim=(1, 2, 3)) + eps  # (B,)
-        loss = (num / den).mean()
+        loss = num / den
+        if if_reduce:
+            loss = loss.mean()
         
         return loss
     
@@ -695,7 +698,10 @@ class TrainLIIF3DConv(LightningModule):
         overlap = kwargs.get("overlap", 0.25)
 
         img_pred = sliding_window_inference(img_zf, upsampling_rate, roi_size, overlap, self.model)  # (B, T, H, W)
-        error_val = self.compute_l1_loss_complex(img_pred, img)
+        error_val = None
+        if img_pred.shape == img.shape:
+            error_val = self.compute_l1_loss_complex(img_pred, img, if_reduce=False)
+            error_val = ptu.to_numpy(error_val)
 
         return img_pred, error_val
     

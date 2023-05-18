@@ -212,6 +212,7 @@ class CINEImageKSDownSampleDataset(Dataset):
                 self.indices = indices[split_idx:]
             else:
                 raise KeyError("Invalid mode")
+        self.cine_ds = self.cine_ds[self.indices, ...]
     
     def __init_lin_tfm(self, scale: float, undersampling_rate: float):
         """
@@ -257,7 +258,7 @@ class CINEImageKSDownSampleDataset(Dataset):
             seed = self.params["seed"] + idx # val: fixed seed
 
         # adding phase
-        img = self.cine_ds[idx]  # (T, H, W)        
+        img = self.cine_ds[idx]  # (T, H, W)      
         img = add_phase(img[:, None, ...], init_shape=(5, 5, 5),  seed=seed, mode="2d+time")
         img = img[:, 0, ...]  # (T, 1, H, W) -> (T, H, W)
         img = img[None, ...]  # (1, T, H, W)
@@ -319,18 +320,21 @@ class CINEImageKSDownSampleDM(LightningDataModule):
         return super().setup(stage)
     
     def train_dataloader(self) -> TRAIN_DATALOADERS:
-        loader = DataLoader(self.train_ds, self.params["batch_size"], shuffle=True, pin_memory=True)
+        loader = DataLoader(self.train_ds, self.params["batch_size"], shuffle=True, num_workers=self.params["num_workers"], 
+                            pin_memory=True)
 
         return loader
     
     def val_dataloader(self) -> EVAL_DATALOADERS:
-        loader = DataLoader(self.val_ds, self.params["batch_size"], pin_memory=True)
+        loader = DataLoader(self.val_ds, self.params["batch_size"], num_workers=self.params["num_workers"], 
+                            pin_memory=True)
 
         return loader
     
     def predict_dataloader(self) -> EVAL_DATALOADERS:
         batch_size = self.params.get("test_batch_size", self.params["batch_size"])
-        loader = DataLoader(self.test_ds, batch_size, pin_memory=True)
+        loader = DataLoader(self.test_ds, batch_size, num_workers=self.params["num_workers"], 
+                            pin_memory=True)
 
         return loader
     

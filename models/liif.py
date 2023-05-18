@@ -160,7 +160,7 @@ class LIIFParametric3DConv(nn.Module):
         self.mlp = SirenComplex(self.params["mlp"])
     
     def forward(self, x_zf: torch.Tensor, t_coord: torch.Tensor):
-        # x_zf: (B, T, H, W), t_coord: (B, T'); T should be fixed to be standart input length
+        # x_zf: (B, T, H, W), t_coord: (B, T'); T should be fixed to be standard input length
         B, T, H, W = x_zf.shape
         T_coord = t_coord.shape[-1]  # T'
         x_real = torch.real(x_zf)
@@ -177,7 +177,7 @@ class LIIFParametric3DConv(nn.Module):
             t_coord_ += radius * v + self.params["eps_shift"]
             t_coord_ = torch.clamp(t_coord_, -1 + self.params["eps_shift"], 1 - self.params["eps_shift"])
             t_coord_ = t_coord_.unsqueeze(-1)  # (B, T', 1)
-            q_coord = ptu.grid_sample1D(feat_coord, t_coord_) .squeeze(1)  # (B, 1, T') -> (B, T')
+            q_coord = ptu.grid_sample1D(feat_coord, t_coord_).squeeze(1)  # (B, 1, T') -> (B, T')
             q_feats = ptu.grid_sample1D(x_enc, t_coord_)  # (B, C', T')
             q_feats = rearrange(q_feats, "B (C H W) T -> B T H W C", H=H, W=W)  # (B, T', H, W, C)
             rel_coord = (t_coord - q_coord) * (T - 1)
@@ -204,11 +204,13 @@ def sliding_window_inference(x_zf: torch.Tensor, upsample_rate: float, roi_size:
     Twice: forward and backward to accomodate corners 
     """
     if_train = predictor.training
+    predictor.to(x_zf.device)
     predictor.eval()
 
     B, T, H, W = x_zf.shape
     T_out_per_window = int(roi_size * upsample_rate)  # T'
     t_coord = torch.linspace(-1, 1, T_out_per_window).unsqueeze(0).expand(B, -1)  # (B, T')
+    t_coord = t_coord.to(x_zf.device)
     stride = int(roi_size * overlap)
     T_out = int(T * upsample_rate)
 

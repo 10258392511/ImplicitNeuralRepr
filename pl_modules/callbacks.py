@@ -204,8 +204,7 @@ class TrainLIIFCallback(Callback):
 class TrainLIIF3DConvCallback(Callback):
     def __init__(self, params: dict):
         """
-        params: save_dir, save_interval, test_idx = -1, temporal_res: int = 50,
-                upsample_rates: Sequence[float], roi_size: int, overlap: float
+        params: save_dir, save_interval, test_idx = -1, upsample_rates: Sequence[float], roi_size: int, overlap: float
         """
         super().__init__()
         self.params = params
@@ -216,6 +215,7 @@ class TrainLIIF3DConvCallback(Callback):
     
     def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         torch.set_grad_enabled(True)
+        pl_module.model.to(ptu.DEVICE)
     
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule,) -> None:
         torch.set_grad_enabled(False)
@@ -226,10 +226,12 @@ class TrainLIIF3DConvCallback(Callback):
             img_test = data_dict[IMAGE_KEY]  # (T, H, W)
             img_zf = data_dict[ZF_KEY]
             
+            img_test = img_test.unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
             torch.save(img_test.detach().cpu(), os.path.join(self.params["save_dir"], f"orig.pt"))
             save_vol_as_gif(torch.abs(img_test), save_dir=self.params["save_dir"], filename=f"orig_mag.gif")
             save_vol_as_gif(torch.angle(img_test), save_dir=self.params["save_dir"], filename=f"orig_phase.gif")
 
+            img_zf = img_zf.unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
             torch.save(img_zf.detach().cpu(), os.path.join(self.params["save_dir"], f"zf.pt"))
             save_vol_as_gif(torch.abs(img_zf), save_dir=self.params["save_dir"], filename=f"zf_mag.gif")
             save_vol_as_gif(torch.angle(img_zf), save_dir=self.params["save_dir"], filename=f"zf_phase.gif")
@@ -248,8 +250,10 @@ class TrainLIIF3DConvCallback(Callback):
 
         for upsample_rate_iter in self.params["upsample_rates"]:
             predict_step_params["upsample_rate"] = upsample_rate_iter
-            pred, error_val = pl_module.predict_step(batch, None, **predict_step_params)  # (1, T, H, W)
+            pred, error_val = pl_module.predict_step(batch, None, **predict_step_params)  # (1, T, H, W), (1,)
             pred = pred.transpose(0, 1)  # (1, T, H, W) -> (T, 1, H, W)
+            error_val = [-1.] if error_val is None else error_val
+            error_val = error_val[0]
             torch.save(pred.detach().cpu(), os.path.join(self.params["save_dir"], f"recons_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}_error_{error_val: .4f}.pt"))
             save_vol_as_gif(torch.abs(pred), save_dir=self.params["save_dir"], filename=f"mag_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")
             save_vol_as_gif(torch.angle(pred), save_dir=self.params["save_dir"], filename=f"phase_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")

@@ -13,9 +13,9 @@ def grid_sample1D(kernel: torch.Tensor, grid: torch.Tensor, mode: str = "nearest
     kernel: (B, C, T), grid: (B, T', 1)
     """
     kernel = kernel.unsqueeze(-1)  # (B, C, T, 1)
-    grid = grid.unsqueeze(-1)  # (B, T', 1, 1)
-    grid = torch.cat([-torch.ones_like(grid), grid], dim=-1)  # (B, T', 1, 2)
-    output = F.grid_sample(kernel, grid, mode)  # (B, C, T', 1)
-    output = output.squeeze(-1)  # (B, C, T')
+    grid = grid.unsqueeze(1)  # (B, 1, T', 1)
+    grid = torch.cat([-torch.ones_like(grid), grid], dim=-1)  # (B, 1, T', 2)
+    output = F.grid_sample(kernel, grid, mode)  # (B, C, 1, T')
+    output = output.squeeze(-2)  # (B, C, T')
 
     return output
