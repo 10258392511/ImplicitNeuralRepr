@@ -1,3 +1,5 @@
+from typing import Any, Optional
+from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 import pytorch_lightning as pl
 import os
@@ -6,6 +8,7 @@ import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 from pytorch_lightning.callbacks import Callback
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
 from einops import rearrange
+from ImplicitNeuralRepr.configs import IMAGE_KEY, MEASUREMENT_KEY, ZF_KEY, COORD_KEY
 
 
 class TrainSpatialCallack(Callback):
@@ -196,4 +199,60 @@ class TrainLIIFCallback(Callback):
     
     def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         return self.on_train_epoch_end(trainer, pl_module)
+
+
+class TrainLIIF3DConvCallback(Callback):
+    def __init__(self, params: dict):
+        """
+        params: save_dir, save_interval, test_idx = -1, temporal_res: int = 50,
+                upsample_rates: Sequence[float], roi_size: int, overlap: float
+        """
+        super().__init__()
+        self.params = params
+        self.counter = -1
+        self.params["save_dir"] = os.path.join(self.params["save_dir"], "screenshots/")
+        if not os.path.isdir(self.params["save_dir"]):
+            os.makedirs(self.params["save_dir"])
     
+    def on_train_epoch_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        torch.set_grad_enabled(True)
+    
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule,) -> None:
+        torch.set_grad_enabled(False)
+
+        self.counter += 1
+        data_dict = trainer.datamodule.test_ds[self.params["test_idx"]]
+        if self.counter == 0:
+            img_test = data_dict[IMAGE_KEY]  # (T, H, W)
+            img_zf = data_dict[ZF_KEY]
+            
+            torch.save(img_test.detach().cpu(), os.path.join(self.params["save_dir"], f"orig.pt"))
+            save_vol_as_gif(torch.abs(img_test), save_dir=self.params["save_dir"], filename=f"orig_mag.gif")
+            save_vol_as_gif(torch.angle(img_test), save_dir=self.params["save_dir"], filename=f"orig_phase.gif")
+
+            torch.save(img_zf.detach().cpu(), os.path.join(self.params["save_dir"], f"zf.pt"))
+            save_vol_as_gif(torch.abs(img_zf), save_dir=self.params["save_dir"], filename=f"zf_mag.gif")
+            save_vol_as_gif(torch.angle(img_zf), save_dir=self.params["save_dir"], filename=f"zf_phase.gif")
+        
+        if self.counter % self.params["save_interval"] != 0 and self.counter != trainer.max_epochs - 1:
+            return
+        
+        batch = {
+            IMAGE_KEY: data_dict[IMAGE_KEY].unsqueeze(0),  # (T, H, W) -> (1, T, H, W),
+            ZF_KEY: data_dict[ZF_KEY].unsqueeze(0)
+        }
+        predict_step_params = {
+            "roi_size": self.params["roi_size"],
+            "overlap": self.params["overlap"]
+        }
+
+        for upsample_rate_iter in self.params["upsample_rates"]:
+            predict_step_params["upsample_rate"] = upsample_rate_iter
+            pred, error_val = pl_module.predict_step(batch, None, **predict_step_params)  # (1, T, H, W)
+            pred = pred.transpose(0, 1)  # (1, T, H, W) -> (T, 1, H, W)
+            torch.save(pred.detach().cpu(), os.path.join(self.params["save_dir"], f"recons_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}_error_{error_val: .4f}.pt"))
+            save_vol_as_gif(torch.abs(pred), save_dir=self.params["save_dir"], filename=f"mag_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")
+            save_vol_as_gif(torch.angle(pred), save_dir=self.params["save_dir"], filename=f"phase_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")
+
+    def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+        return self.on_train_epoch_end(trainer, pl_module)

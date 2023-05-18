@@ -20,10 +20,12 @@ from ImplicitNeuralRepr.utils.utils import (
     save_vol_as_gif,
     expand_dim_as
 )
+from ImplicitNeuralRepr.models.liif import sliding_window_inference
 from collections import defaultdict
 from einops import rearrange
 from typing import Any, List, Optional, Union
 from pytorch_lightning.utilities.types import STEP_OUTPUT
+from ImplicitNeuralRepr.configs import IMAGE_KEY, MEASUREMENT_KEY, ZF_KEY, COORD_KEY
 
 
 class TrainSpatial(LightningModule):
@@ -628,6 +630,74 @@ class TrainLIIF(LightningModule):
         img_pred = self.model(img_zf, t_coord)  # (B, T, H, W)
 
         return img_pred
+    
+    def configure_optimizers(self):
+        opt, scheduler = load_optimizer(self.config["optimization"], self.model)
+        opt_dict = {
+            "optimizer": opt
+        }
+        if scheduler is not None:
+            opt_dict.update({
+                "lr_scheduler": scheduler
+            })
+        
+        return opt_dict
+
+
+class TrainLIIF3DConv(LightningModule):
+    def __init__(self, model: nn.Module, config: dict):
+        super().__init__()
+        self.model = model
+        self.config = config
+
+    @staticmethod
+    def compute_l1_loss_complex(x_pred: torch.Tensor, x: torch.Tensor, eps=1e-4):
+        # x_pred, x: (B, T, H, W)
+        num = torch.abs(torch.abs(x_pred) - torch.abs(x)).sum(dim=(1, 2, 3))  # (B,)
+        den = torch.abs(x).sum(dim=(1, 2, 3)) + eps  # (B,)
+        loss = (num / den).mean()
+        
+        return loss
+    
+    def __shared_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
+        # for .training_step(.) and .validation_step(.)
+        img = batch[IMAGE_KEY]  # (B, T0, H, W)
+        img_zf = batch[ZF_KEY]
+        t_coord = batch[COORD_KEY]  # (B, T0)
+        img_pred = self.model(img_zf, t_coord)  # (B, T0, H, W)
+        loss = self.compute_l1_loss_complex(img_pred, img)
+
+        return loss, img_pred
+    
+    def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
+        loss, _ = self.__shared_step(batch, batch_idx)
+
+        self.log("train_loss", loss, prog_bar=True, on_step=True)
+        self.log("epoch_train_loss", loss, prog_bar=True, on_epoch=True)
+
+        return loss
+    
+    def validation_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
+        loss, _ = self.__shared_step(batch, batch_idx)
+
+        self.log("epoch_val_loss", loss, prog_bar=True, on_epoch=True)
+
+        return loss
+
+    def predict_step(self, batch: Any, batch_idx: int, **kwargs) -> Any:
+        """
+        kwargs: upsample_rate, roi_size, overlap
+        """
+        img = batch[IMAGE_KEY]  # (B, T0, H, W)
+        img_zf = batch[ZF_KEY]
+        upsampling_rate = kwargs.get("upsample_rate", 1.)
+        roi_size = kwargs.get("roi_size", 8)
+        overlap = kwargs.get("overlap", 0.25)
+
+        img_pred = sliding_window_inference(img_zf, upsampling_rate, roi_size, overlap, self.model)  # (B, T, H, W)
+        error_val = self.compute_l1_loss_complex(img_pred, img)
+
+        return img_pred, error_val
     
     def configure_optimizers(self):
         opt, scheduler = load_optimizer(self.config["optimization"], self.model)
