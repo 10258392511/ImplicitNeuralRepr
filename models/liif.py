@@ -180,7 +180,7 @@ class LIIFParametric3DConv(nn.Module):
             q_coord = ptu.grid_sample1D(feat_coord, t_coord_) .squeeze(1)  # (B, 1, T') -> (B, T')
             q_feats = ptu.grid_sample1D(x_enc, t_coord_)  # (B, C', T')
             q_feats = rearrange(q_feats, "B (C H W) T -> B T H W C", H=H, W=W)  # (B, T', H, W, C)
-            rel_coord = t_coord - q_coord
+            rel_coord = (t_coord - q_coord) * (T - 1)
             rel_coord = rel_coord.reshape(B, T_coord, 1, 1, 1).expand(B, T_coord, H, W, 1)  # (B, T', H, W, 1)
             mlp_input = torch.cat([q_feats, rel_coord], dim=-1)  # (B, T', H, W, C + 1)
             pred = self.mlp(mlp_input).squeeze(-1)  # (B, T', H, W, 1) -> (B, T', H, W), complex-valued
@@ -209,10 +209,40 @@ def sliding_window_inference(x_zf: torch.Tensor, upsample_rate: float, roi_size:
     B, T, H, W = x_zf.shape
     T_out_per_window = int(roi_size * upsample_rate)  # T'
     t_coord = torch.linspace(-1, 1, T_out_per_window).unsqueeze(0).expand(B, -1)  # (B, T')
-    # x_zf = rearrange(x_zf, "B T H W -> B (H W) T").unsqueeze(-1)  # (B, H * W, T, 1)
     stride = int(roi_size * overlap)
-    # x_zf_unfolded = F.unfold(x_zf, (roi_size, 1), stride=stride)  # (B, H * W * T0, L)
-    # x_zf = rearrange(x_zf_unfolded, "B (H W T0) L -> (B L)")
+    T_out = int(T * upsample_rate)
+
+    # forward
+    x_out = torch.zeros((B, T_out, H, W), device=x_zf.device, dtype=x_zf.dtype)
+    counter = torch.zeros((T_out,), device=x_zf.device)
+    pbar = trange(0, T + 1 - roi_size, stride, desc="forward", leave=False)
+    for idx in pbar:
+        x_zf_in = x_zf[:, idx:idx + roi_size, ...]
+        x_pred_iter = predictor(x_zf_in, t_coord)  # (B, T', H, W)
+        tgt_idx = int(idx * upsample_rate)
+        x_out[:, tgt_idx:tgt_idx + T_out_per_window, ...] += x_pred_iter
+        counter[tgt_idx:tgt_idx + T_out_per_window] += 1
+    x_out_forward = x_out / counter.reshape(-1, 1, 1)
+
+    # backward
+    x_out = torch.zeros((B, T_out, H, W), device=x_zf.device, dtype=x_zf.dtype)
+    counter = torch.zeros((T_out,), device=x_zf.device)
+    pbar = trange(0, T + 1 - roi_size, stride, desc="backward", leave=False)
+    x_zf = x_zf.flip(1)  # (3, 2), (1, 0)
+    for idx in pbar:
+        x_zf_in = x_zf[:, idx:idx + roi_size, ...]  
+        x_zf_in = x_zf_in.flip(1)  # (3, 2) -> (2, 3)
+        x_pred_iter = predictor(x_zf_in, t_coord)  # (B, T', H, W)
+        tgt_idx = int(idx * upsample_rate)
+        x_out[:, tgt_idx:tgt_idx + T_out_per_window, ...] += x_pred_iter.flip(1)  # (2, 3) -> (3, 2), assuming upsample_rate == 1
+        counter[tgt_idx:tgt_idx + T_out_per_window] += 1
+    
+    x_out_backward = x_out / counter.reshape(-1, 1, 1)  # (3, 2), (1, 0)
+    x_out_backward = x_out_backward.flip(1)  # (0, 1), (2, 3)
+    x_out = (x_out_forward + x_out_backward) / 2
 
     if if_train:
         predictor.train()
+    
+    # (B, T_out, H, W)
+    return x_out
