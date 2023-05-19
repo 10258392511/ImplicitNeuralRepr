@@ -286,27 +286,41 @@ def sliding_window_inference(x_zf: torch.Tensor, upsample_rate: float, roi_size:
         x_out[:, tgt_idx:tgt_idx + T_out_per_window, ...] += x_pred_iter
         assert not torch.any(torch.isnan(x_out)), f"idx = {idx}"
         counter[tgt_idx:tgt_idx + T_out_per_window] += 1
-    counter[counter == 0] = 1
-    x_out_forward = x_out / counter.reshape(-1, 1, 1)
+    
+    # counter[counter == 0] = 1
+    # x_out_forward = x_out / counter.reshape(-1, 1, 1)
 
-    # backward
-    x_out = torch.zeros((B, T_out, H, W), device=x_zf.device, dtype=x_zf.dtype)
-    counter = torch.zeros((T_out,), device=x_zf.device)
-    pbar = trange(T + 1 - roi_size, -1, stride, desc="backward", leave=False)
-    x_zf = x_zf.flip(1)  # (3, 2), (1, 0)
-    for idx in pbar:
-        x_zf_in = x_zf[:, idx:idx + roi_size, ...]  
-        x_zf_in = x_zf_in.flip(1)  # (3, 2) -> (2, 3)
+    # # backward
+    # x_out = torch.zeros((B, T_out, H, W), device=x_zf.device, dtype=x_zf.dtype)
+    # counter = torch.zeros((T_out,), device=x_zf.device)
+    # pbar = trange(T + 1 - roi_size, -1, stride, desc="backward", leave=False)
+    # x_zf = x_zf.flip(1)  # (3, 2), (1, 0)
+    # for idx in pbar:
+    #     x_zf_in = x_zf[:, idx:idx + roi_size, ...]  
+    #     x_zf_in = x_zf_in.flip(1)  # (3, 2) -> (2, 3)
+    #     x_pred_iter = predictor(x_zf_in, t_coord)  # (B, T', H, W)
+    #     tgt_idx = int(idx * upsample_rate)
+    #     assert not torch.any(torch.isnan(x_out)), f"idx = {idx}"
+    #     x_out[:, tgt_idx:tgt_idx + T_out_per_window, ...] += x_pred_iter.flip(1)  # (2, 3) -> (3, 2), assuming upsample_rate == 1
+    #     counter[tgt_idx:tgt_idx + T_out_per_window] += 1
+    
+    # counter[counter == 0] = 1
+    # x_out_backward = x_out / counter.reshape(-1, 1, 1)  # (3, 2), (1, 0)
+    # x_out_backward = x_out_backward.flip(1)  # (0, 1), (2, 3)
+    # x_out = (x_out_forward + x_out_backward) / 2
+
+    # only add the last window
+    if torch.any(counter < 1):
+        x_zf_in = x_zf[:, -roi_size:, ...]
         x_pred_iter = predictor(x_zf_in, t_coord)  # (B, T', H, W)
         tgt_idx = int(idx * upsample_rate)
+        mask = (counter < 1)
+        num_zeros = mask.sum()
+        x_out[:, mask, ...] += x_pred_iter[:, -num_zeros:, ...]
         assert not torch.any(torch.isnan(x_out)), f"idx = {idx}"
-        x_out[:, tgt_idx:tgt_idx + T_out_per_window, ...] += x_pred_iter.flip(1)  # (2, 3) -> (3, 2), assuming upsample_rate == 1
-        counter[tgt_idx:tgt_idx + T_out_per_window] += 1
+        counter[mask] += 1
     
-    counter[counter == 0] = 1
-    x_out_backward = x_out / counter.reshape(-1, 1, 1)  # (3, 2), (1, 0)
-    x_out_backward = x_out_backward.flip(1)  # (0, 1), (2, 3)
-    x_out = (x_out_forward + x_out_backward) / 2
+    x_out /= counter.reshape(-1, 1, 1)
 
     if if_train:
         predictor.train()
