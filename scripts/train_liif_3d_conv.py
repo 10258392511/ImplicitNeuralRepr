@@ -20,7 +20,7 @@ from ImplicitNeuralRepr.models import load_model, reload_model
 from ImplicitNeuralRepr.utils.utils import vis_images
 from ImplicitNeuralRepr.pl_modules.trainers import TrainLIIF3DConv
 from pytorch_lightning.callbacks import ModelCheckpoint
-from ImplicitNeuralRepr.pl_modules.callbacks import TrainLIIF3DConvCallback
+from ImplicitNeuralRepr.pl_modules.callbacks import TrainLIIF3DConvCallback, TrainLIIF3DConvDebugCallback
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from einops import rearrange
@@ -46,6 +46,7 @@ if __name__ == "__main__":
     parser.add_argument("--val_interval", type=int, default=20)
     parser.add_argument("--if_train", action="store_true")
     parser.add_argument("--if_debug", action="store_true")
+    parser.add_argument("--if_debug_detail", action="store_true")
     parser.add_argument("--if_pred", action="store_true")
     parser.add_argument("--notes", default="no extra notes")
 
@@ -130,6 +131,12 @@ if __name__ == "__main__":
     }
     train_callback = TrainLIIF3DConvCallback(train_callback_params)
     callbacks.append(train_callback)
+    if args_dict["if_debug_detail"]:
+        debug_callback_params = {
+            "save_dir": args_dict["output_dir"]
+        }
+        debug_callback = TrainLIIF3DConvDebugCallback(debug_callback_params)
+        callbacks.append(debug_callback)
 
     if args_dict["if_debug"]:
         trainer = Trainer(

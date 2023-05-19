@@ -16,13 +16,13 @@ model:
     out_features: 2
     hidden_layers: 4
     outermost_linear: true
-    sine_portion: 0.
+    sine_portion: 1.
   unet:
     spatial_dims: 3
     in_channels: 2
-    out_channels: 2  # feature_map_dim
+    out_channels: 8  # feature_map_dim
     channels: [32, 64]
-    strides: [2]
+    strides: [1]
 
 optimization:
   opt_name: "AdamW"
@@ -30,5 +30,5 @@ optimization:
     lr: !!float 1e-4
   scheduler_name: "StepLR"
   scheduler_params:
-    step_size: 20
+    step_size: 10
     gamma: 0.5

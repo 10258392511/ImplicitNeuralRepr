@@ -6,7 +6,7 @@ import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from monai.networks.nets import UNet
 from ImplicitNeuralRepr.models.siren import SirenComplex
-from collections import deque
+from collections import deque, defaultdict
 from einops import rearrange
 from tqdm import trange
 
@@ -159,7 +159,46 @@ class LIIFParametric3DConv(nn.Module):
         self.encoder = UNet(**self.params["unet"])
         self.mlp = SirenComplex(self.params["mlp"])
     
-    def forward(self, x_zf: torch.Tensor, t_coord: torch.Tensor):
+    def forward(self, x_zf: torch.Tensor, t_coord: torch.Tensor, if_debug=False):
+        # x_zf: (B, T, H, W), t_coord: (B, T'); T should be fixed to be standard input length
+        B, T, H, W = x_zf.shape
+        T_coord = t_coord.shape[-1]  # T'
+        x_real = torch.real(x_zf)
+        x_imag = torch.imag(x_zf)
+        x = torch.stack([x_real, x_imag], dim=1)  # (B, 2, T, H, W)
+        x_enc = self.encoder(x)  # (B, C, T, H, W)
+        x_enc = rearrange(x_enc, "B C T H W -> B (C H W) T")  # (B, C', T)
+        feat_coord = torch.linspace(-1, 1, T).to(x_zf.device).reshape(1, 1, T).expand(B, 1, T)  # (T,) -> (1, 1, T) -> (B, 1, T)
+        
+        if if_debug:
+            intermediates_dict = defaultdict(deque)
+            intermediates_dict["x_enc"].append(rearrange(x_enc, "B (C H W) T -> B C T H W", H=H, W=W))
+            intermediates_dict["feat_coord"].append(feat_coord)
+
+        t_coord_ = t_coord.unsqueeze(-1)  # (B, T', 1)
+        q_coord = ptu.grid_sample1D(feat_coord, t_coord_, mode="bilinear").squeeze(1)  # (B, 1, T') -> (B, T')
+        q_feats = ptu.grid_sample1D(x_enc, t_coord_, mode="bilinear")  # (B, C', T')
+        q_feats = rearrange(q_feats, "B (C H W) T -> B T H W C", H=H, W=W)  # (B, T', H, W, C)
+        rel_coord = t_coord
+        rel_coord = rel_coord.reshape(B, T_coord, 1, 1, 1).expand(B, T_coord, H, W, 1)  # (B, T', H, W, 1)
+        mlp_input = torch.cat([q_feats, rel_coord], dim=-1)  # (B, T', H, W, C + 1)
+        pred = self.mlp(mlp_input).squeeze(-1)  # (B, T', H, W, 1) -> (B, T', H, W), complex-valued
+
+        if if_debug:
+            intermediates_dict["t_coord"].append(t_coord)
+            intermediates_dict["t_coord_"].append(t_coord_)
+            intermediates_dict["q_coord"].append(q_coord)
+            intermediates_dict["q_feats"].append(rearrange(q_feats, "B T H W C -> B C T H W"))
+            intermediates_dict["rel_coord"].append(rel_coord)
+            intermediates_dict["pred"].append(pred)
+
+        if if_debug:
+            return pred, intermediates_dict
+
+        # (B, T', H, W)
+        return pred
+    
+    def forward_nearest(self, x_zf: torch.Tensor, t_coord: torch.Tensor, if_debug=False):
         # x_zf: (B, T, H, W), t_coord: (B, T'); T should be fixed to be standard input length
         B, T, H, W = x_zf.shape
         T_coord = t_coord.shape[-1]  # T'
@@ -169,9 +208,18 @@ class LIIFParametric3DConv(nn.Module):
         x_enc = self.encoder(x)  # (B, C, T, H, W)
         x_enc = rearrange(x_enc, "B C T H W -> B (C H W) T")  # (B, C', T)
         radius = 2 / (T - 1) / 2
+        # radius = 2 / T / 2
         feat_coord = torch.linspace(-1, 1, T).to(x_zf.device).reshape(1, 1, T).expand(B, 1, T)  # (T,) -> (1, 1, T) -> (B, 1, T)
         
         preds, dists = deque(), deque()
+
+        if if_debug:
+            intermediates_dict = defaultdict(deque)
+            intermediates_dict["x_enc"].append(rearrange(x_enc, "B (C H W) T -> B C T H W", H=H, W=W))
+            intermediates_dict["feat_coord"].append(feat_coord)
+
+        # jitter t_coord to prevent NaN in x_enc (heuristic)
+        t_coord += self.params["eps_shift"] * (np.random.randint(0, 2) * 2 - 1)
         for v in [-1, 1]:
             t_coord_ = t_coord.clone()
             t_coord_ += radius * v + self.params["eps_shift"]
@@ -181,17 +229,29 @@ class LIIFParametric3DConv(nn.Module):
             q_feats = ptu.grid_sample1D(x_enc, t_coord_)  # (B, C', T')
             q_feats = rearrange(q_feats, "B (C H W) T -> B T H W C", H=H, W=W)  # (B, T', H, W, C)
             rel_coord = (t_coord - q_coord) * (T - 1)
+            # rel_coord = (t_coord - q_coord) * T
             rel_coord = rel_coord.reshape(B, T_coord, 1, 1, 1).expand(B, T_coord, H, W, 1)  # (B, T', H, W, 1)
             mlp_input = torch.cat([q_feats, rel_coord], dim=-1)  # (B, T', H, W, C + 1)
             pred = self.mlp(mlp_input).squeeze(-1)  # (B, T', H, W, 1) -> (B, T', H, W), complex-valued
             dist = torch.abs(rel_coord)
             preds.append(pred)
             dists.appendleft(dist)
+
+            if if_debug:
+                intermediates_dict["t_coord"].append(t_coord)
+                intermediates_dict["t_coord_"].append(t_coord_)
+                intermediates_dict["q_coord"].append(q_coord)
+                intermediates_dict["q_feats"].append(rearrange(q_feats, "B T H W C -> B C T H W"))
+                intermediates_dict["rel_coord"].append(rel_coord)
+                intermediates_dict["pred"].append(pred)
         
         preds = torch.stack(list(preds), dim=0)  # [(B, T', H, W)...] -> (2, B, T', H, W)
-        dists = torch.stack(list(dists), dim=0).reshape(-1, B, T_coord, H, W)  # [(B, T')...] -> (2, B, T') -> (2, B, T', 1, 1)
+        dists = torch.stack(list(dists), dim=0).reshape(-1, B, T_coord, H, W)  # [(B, T', H, W)...] -> (2, B, T', H, W)
         pred = preds * dists / dists.sum(dim=0)  # (2, B, T', H, W)
-        pred = pred.sum(dim=0)  
+        pred = pred.sum(dim=0)
+
+        if if_debug:
+            return pred, intermediates_dict
 
         # (B, T', H, W)
         return pred
@@ -203,6 +263,7 @@ def sliding_window_inference(x_zf: torch.Tensor, upsample_rate: float, roi_size:
     x_zf: (B, T, H, W), roi_size: T0
     Twice: forward and backward to accomodate corners 
     """
+    x_zf = x_zf.to(ptu.DEVICE)
     if_train = predictor.training
     predictor.to(x_zf.device)
     predictor.eval()
@@ -223,22 +284,26 @@ def sliding_window_inference(x_zf: torch.Tensor, upsample_rate: float, roi_size:
         x_pred_iter = predictor(x_zf_in, t_coord)  # (B, T', H, W)
         tgt_idx = int(idx * upsample_rate)
         x_out[:, tgt_idx:tgt_idx + T_out_per_window, ...] += x_pred_iter
+        assert not torch.any(torch.isnan(x_out)), f"idx = {idx}"
         counter[tgt_idx:tgt_idx + T_out_per_window] += 1
+    counter[counter == 0] = 1
     x_out_forward = x_out / counter.reshape(-1, 1, 1)
 
     # backward
     x_out = torch.zeros((B, T_out, H, W), device=x_zf.device, dtype=x_zf.dtype)
     counter = torch.zeros((T_out,), device=x_zf.device)
-    pbar = trange(0, T + 1 - roi_size, stride, desc="backward", leave=False)
+    pbar = trange(T + 1 - roi_size, -1, stride, desc="backward", leave=False)
     x_zf = x_zf.flip(1)  # (3, 2), (1, 0)
     for idx in pbar:
         x_zf_in = x_zf[:, idx:idx + roi_size, ...]  
         x_zf_in = x_zf_in.flip(1)  # (3, 2) -> (2, 3)
         x_pred_iter = predictor(x_zf_in, t_coord)  # (B, T', H, W)
         tgt_idx = int(idx * upsample_rate)
+        assert not torch.any(torch.isnan(x_out)), f"idx = {idx}"
         x_out[:, tgt_idx:tgt_idx + T_out_per_window, ...] += x_pred_iter.flip(1)  # (2, 3) -> (3, 2), assuming upsample_rate == 1
         counter[tgt_idx:tgt_idx + T_out_per_window] += 1
     
+    counter[counter == 0] = 1
     x_out_backward = x_out / counter.reshape(-1, 1, 1)  # (3, 2), (1, 0)
     x_out_backward = x_out_backward.flip(1)  # (0, 1), (2, 3)
     x_out = (x_out_forward + x_out_backward) / 2

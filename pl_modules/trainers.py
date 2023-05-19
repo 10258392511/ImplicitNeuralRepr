@@ -662,7 +662,7 @@ class TrainLIIF3DConv(LightningModule):
         
         return loss
     
-    def __shared_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
+    def shared_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
         # for .training_step(.) and .validation_step(.)
         img = batch[IMAGE_KEY]  # (B, T0, H, W)
         img_zf = batch[ZF_KEY]
@@ -673,7 +673,7 @@ class TrainLIIF3DConv(LightningModule):
         return loss, img_pred
     
     def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
-        loss, _ = self.__shared_step(batch, batch_idx)
+        loss, _ = self.shared_step(batch, batch_idx)
 
         self.log("train_loss", loss, prog_bar=True, on_step=True)
         self.log("epoch_train_loss", loss, prog_bar=True, on_epoch=True)
@@ -681,7 +681,7 @@ class TrainLIIF3DConv(LightningModule):
         return loss
     
     def validation_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
-        loss, _ = self.__shared_step(batch, batch_idx)
+        loss, _ = self.shared_step(batch, batch_idx)
 
         self.log("epoch_val_loss", loss, prog_bar=True, on_epoch=True)
 

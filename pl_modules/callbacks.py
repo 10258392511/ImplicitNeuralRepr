@@ -3,12 +3,14 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 import pytorch_lightning as pl
 import os
+import sys
 import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from pytorch_lightning.callbacks import Callback
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
 from einops import rearrange
 from ImplicitNeuralRepr.configs import IMAGE_KEY, MEASUREMENT_KEY, ZF_KEY, COORD_KEY
+from typing import Union
 
 
 class TrainSpatialCallack(Callback):
@@ -219,9 +221,15 @@ class TrainLIIF3DConvCallback(Callback):
     
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule,) -> None:
         torch.set_grad_enabled(False)
+        pl_module.model.to(ptu.DEVICE)
+        if_training = pl_module.training
+        pl_module.model.eval()
 
         self.counter += 1
         data_dict = trainer.datamodule.test_ds[self.params["test_idx"]]
+        for key, val in data_dict.items():
+            data_dict[key] = val.to(ptu.DEVICE)
+
         if self.counter == 0:
             img_test = data_dict[IMAGE_KEY]  # (T, H, W)
             img_zf = data_dict[ZF_KEY]
@@ -258,5 +266,92 @@ class TrainLIIF3DConvCallback(Callback):
             save_vol_as_gif(torch.abs(pred), save_dir=self.params["save_dir"], filename=f"mag_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")
             save_vol_as_gif(torch.angle(pred), save_dir=self.params["save_dir"], filename=f"phase_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")
 
+        data_dict = trainer.datamodule.val_ds[self.params["test_idx"]]
+        batch = {key: val.unsqueeze(0).to(ptu.DEVICE) for key, val in data_dict.items()}
+        loss, pred = pl_module.shared_step(batch, None)  # (1, T, H, W)
+        pred = pred.transpose(0, 1)
+        torch.save(pred.detach().cpu(), os.path.join(self.params["save_dir"], f"recons_{self.counter + 1}_val_error_{loss: .4f}.pt"))
+        save_vol_as_gif(torch.abs(pred), save_dir=self.params["save_dir"], filename=f"mag_{self.counter + 1}_val.gif")
+        save_vol_as_gif(torch.angle(pred), save_dir=self.params["save_dir"], filename=f"phase_{self.counter + 1}_val.gif")
+
+        if if_training:
+            pl_module.model.train()
+
+
     def on_train_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         return self.on_train_epoch_end(trainer, pl_module)
+
+
+class TrainLIIF3DConvDebugCallback(Callback):
+    def __init__(self, params: dict):
+        """
+        params: save_dir
+        """
+        super().__init__()
+        self.params = params
+        self.params["save_dir"] = os.path.join(self.params["save_dir"], "debug_dir/")
+        if not os.path.isdir(self.params["save_dir"]):
+            os.makedirs(self.params["save_dir"])
+    
+    def on_train_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule, outputs: STEP_OUTPUT, batch: Any, batch_idx: int, unused: Union[int, None] = 0) -> None:
+        torch.set_grad_enabled(False)
+        if_training = pl_module.model.training
+        pl_module.model.eval()
+
+        img = batch[IMAGE_KEY]  # (B, T0, H, W)
+        img_zf = batch[ZF_KEY]
+        t_coord = batch[COORD_KEY]  # (B, T0)
+        img_pred, intermediates_dict = pl_module.model(img_zf, t_coord, if_debug=True)  # (B, T0, H, W)
+
+        save_vol_as_gif(torch.abs(img.unsqueeze(2)[0]), save_dir=self.params["save_dir"], filename=f"mag_img.gif")
+        save_vol_as_gif(torch.abs(img_zf.unsqueeze(2)[0]), save_dir=self.params["save_dir"], filename=f"mag_img_zf.gif")
+        save_vol_as_gif(torch.abs(img_pred.unsqueeze(2)[0]), save_dir=self.params["save_dir"], filename=f"mag_img_pred.gif")
+
+        save_vol_as_gif(intermediates_dict["x_enc"][0][0, None, :, 0, ...].transpose(0, 1),
+                        save_dir=self.params["save_dir"], filename=f"x_enc.gif")  # (B, C, T, H, W) -> (1, C, H, W) -> (C, 1, H, W)
+        
+        for idx, pred_iter in enumerate(intermediates_dict["pred"]):
+            # (B, T, H, W) -> (B, T, 1, H, W) -> (T, 1, H, W)
+            save_vol_as_gif(torch.abs(pred_iter.unsqueeze(2)[0]), save_dir=self.params["save_dir"], filename=f"mag_img_pred_{idx}.gif")
+        
+        for idx, q_feats_iter in enumerate(intermediates_dict["q_feats"]):
+            # (B, C, T, H, W) -> (B, 1, C, H, W) -> (1, C, H, W) -> (C, 1, H, W)
+            save_vol_as_gif(torch.abs(q_feats_iter[0, None, :, 0, ...].transpose(0, 1)), save_dir=self.params["save_dir"], filename=f"mag_q_feats_{idx}.gif")
+        
+        with open(os.path.join(self.params["save_dir"], "log.txt"), "w") as wf:
+            key = "feat_coord"
+            print(f"{key}", file=wf)
+            print(intermediates_dict[key][0][0, 0], file=wf)  # (T0,)
+            print("-" * 200, file=wf)
+            
+            key = "t_coord"
+            for idx, ele_iter in enumerate(intermediates_dict[key]):
+                print(f"{key}_{idx}", file=wf)
+                print(ele_iter[0, :], file=wf)  # (T',)
+            print("-" * 200, file=wf)
+
+            key = "t_coord_"
+            for idx, ele_iter in enumerate(intermediates_dict[key]):
+                print(f"{key}_{idx}", file=wf)
+                print(ele_iter[0, :, 0], file=wf)  # (T',)
+            print("-" * 200, file=wf)
+            
+            key = "q_coord"
+            for idx, ele_iter in enumerate(intermediates_dict[key]):
+                print(f"{key}_{idx}", file=wf)
+                print(ele_iter[0, :], file=wf)  # (T',)
+            print("-" * 200, file=wf)
+            
+            key = "rel_coord"
+            for idx, ele_iter in enumerate(intermediates_dict[key]):
+                print(f"{key}_{idx}", file=wf)
+                print(ele_iter[0, :, 0, 0, 0], file=wf)  # (T',)
+            print("-" * 200, file=wf)
+
+        if if_training:
+            pl_module.model.train()
+        torch.set_grad_enabled(True)
+
+        user_input = input("If continue? Y/N: ")
+        if user_input.upper() == "N":
+            sys.exit(1)
