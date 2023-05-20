@@ -14,10 +14,15 @@ import pickle
 import time
 import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
-from ImplicitNeuralRepr.configs import load_config, load_mask_config
+from ImplicitNeuralRepr.configs import (
+    load_config, 
+    load_mask_config,
+    IMAGE_KEY,
+    ZF_KEY
+)
 from ImplicitNeuralRepr.datasets import CINEImageKSDownSampleDM
 from ImplicitNeuralRepr.models import load_model, reload_model
-from ImplicitNeuralRepr.utils.utils import vis_images
+from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
 from ImplicitNeuralRepr.pl_modules.trainers import TrainLIIF3DConv
 from pytorch_lightning.callbacks import ModelCheckpoint
 from ImplicitNeuralRepr.pl_modules.callbacks import TrainLIIF3DConvCallback, TrainLIIF3DConvDebugCallback
@@ -100,7 +105,7 @@ if __name__ == "__main__":
 
     if args_dict["if_pred"] and (not args_dict["if_train"]):
         ckpt_path = reload_model(args_dict["task_name"])
-        lit_model.load_from_checkpoint(ckpt_path, model=model, config_dict=config_dict)
+        lit_model.load_from_checkpoint(ckpt_path, model=model, config=config_dict)
 
     time_stamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")
     log_dir = os.path.join(args_dict["log_dir"], time_stamp)
@@ -167,7 +172,9 @@ if __name__ == "__main__":
     if args_dict["if_pred"]:
         print("-" * 100)
         print("Predicting...")
-        all_preds = trainer.predict(lit_model, datamodule=dm)  # [((B_test, T, H, W), float)]
+        all_preds = trainer.predict(lit_model, datamodule=dm)  # [((B_test, T, H, W), (B_test,))]
+        all_recons = [item[0] for item in all_preds]
+        all_recons = torch.cat(all_recons, axis=0)  # (N_all, T, H, W)
         all_errors = np.concatenate([item[1] for item in all_preds], axis=0)  # (N_all,)
         train_val_split_idx = len(dm.train_ds)
         metric_dict = {
@@ -179,3 +186,17 @@ if __name__ == "__main__":
             wf.write("\n")
             for key, val in metric_dict.items():
                 wf.write(f"{key}: {val}\n")
+        
+        val_idx = 0
+        data_idx = train_val_split_idx + val_idx
+        data_dict = dm.test_ds[data_idx]
+        img = data_dict[IMAGE_KEY]  # (T, H, W)
+        img_zf = data_dict[ZF_KEY]
+        torch.save(img.detach().cpu(), os.path.join(args_dict["output_dir"], "orig.pt"))
+        torch.save(img_zf.detach().cpu(), os.path.join(args_dict["output_dir"], "zf.pt"))
+        save_vol_as_gif(torch.abs(img.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="orig_mag.gif")
+        save_vol_as_gif(torch.abs(img_zf.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="zf_mag.gif")
+
+        recons = all_recons[data_idx, ...].detach().cpu()  # (T, H, W)
+        torch.save(recons, os.path.join(args_dict["output_dir"], "recons.pt"))
+        save_vol_as_gif(torch.abs(recons.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="recons_mag.gif")

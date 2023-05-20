@@ -225,6 +225,9 @@ class CINEImageKSDownSampleDataset(Dataset):
         T_in = self.input_T if self.params["mode"] != "test" else self.params["T"]
         seed = self.params["seed"]
 
+        # # TODO: comment out
+        # mask_params = self.mask_config[self.params["test_undersample_rate"]]
+        # ###################
         lin_tfm_params = {
             "sens_type": "exp",
             "num_sens": 2,
