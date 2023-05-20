@@ -197,6 +197,6 @@ if __name__ == "__main__":
         save_vol_as_gif(torch.abs(img.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="orig_mag.gif")
         save_vol_as_gif(torch.abs(img_zf.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="zf_mag.gif")
 
-        recons = all_recons[data_idx, ...].detach().cpu()  # (T, H, W)
+        recons = all_recons[data_idx, ...].detach().cpu().clone()  # (T, H, W)
         torch.save(recons, os.path.join(args_dict["output_dir"], "recons.pt"))
         save_vol_as_gif(torch.abs(recons.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="recons_mag.gif")
