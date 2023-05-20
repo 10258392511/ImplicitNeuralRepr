@@ -163,7 +163,8 @@ class CINEImageKSPDM(LightningDataModule):
 class CINEImageKSDownSampleDataset(Dataset):
     def __init__(self, params: dict, mask_config: dict):
         """
-        params: mode: str {train | val | test}, res: int {64 | 127}, T = 25, num_sens = 2, seed: int or None, train_val_split: float
+        params: mode: str {train | val | test}, res: int {64 | 127}, T = 25, num_sens = 2, test_undersample_rate: float, data_aug_p: float, 
+                seed: int or None, train_val_split: float
         """
         super().__init__()
         self.params = params
@@ -183,6 +184,8 @@ class CINEImageKSDownSampleDataset(Dataset):
             self.res = 128
         for scale_iter, u_rate_iter in zip(self.scales, self.undersampling_rates):
             self.__init_lin_tfm(scale_iter, u_rate_iter)  # keys: 2., 3., 6.
+        
+        self.test_lin_tfm = self.__init_lin_tfm(1., self.params["test_undersample_rate"])
         
         # load CINE64/127
         if self.params["res"] == 64:
@@ -230,7 +233,10 @@ class CINEImageKSDownSampleDataset(Dataset):
             "undersample_t": scale,
             "seed": seed
         }
-        self.lin_tfm_dict[undersampling_rate] = SENSE(**lin_tfm_params)
+        lin_tfm = SENSE(**lin_tfm_params)
+        self.lin_tfm_dict[undersampling_rate] = lin_tfm
+
+        return lin_tfm
 
     def __len__(self):
         return self.cine_ds.shape[0]
@@ -239,11 +245,12 @@ class CINEImageKSDownSampleDataset(Dataset):
         if self.params["mode"] == "test":
             # no data augmentation
             img = self.cine_ds[idx]  # (T, H, W)
-            lin_tfm = self.lin_tfm_dict[self.max_undersampling_rate]
+            # lin_tfm = self.lin_tfm_dict[self.max_undersampling_rate]
+            lin_tfm = self.test_lin_tfm
             measurement = lin_tfm(img)  # R = 6
             coord = torch.linspace(-1, 1, self.params["T"])
             out_dict = {
-                IMAGE_KEY: img,  # (T, H, W)
+                IMAGE_KEY: img.to(torch.complex64),  # (T, H, W)
                 MEASUREMENT_KEY: measurement,
                 ZF_KEY: lin_tfm.conj_op(measurement),
                 COORD_KEY: coord  # (T,)
@@ -258,9 +265,12 @@ class CINEImageKSDownSampleDataset(Dataset):
             seed = self.params["seed"] + idx # val: fixed seed
 
         # adding phase
-        img = self.cine_ds[idx]  # (T, H, W)      
-        img = add_phase(img[:, None, ...], init_shape=(5, 5, 5),  seed=seed, mode="2d+time")
-        img = img[:, 0, ...]  # (T, 1, H, W) -> (T, H, W)
+        img = self.cine_ds[idx]  # (T, H, W)  
+        if np.random.rand() <= self.params["data_aug_p"]:    
+            img = add_phase(img[:, None, ...], init_shape=(5, 5, 5),  seed=seed, mode="2d+time")
+            img = img[:, 0, ...]  # (T, 1, H, W) -> (T, H, W)
+        else:
+            img = img.to(torch.complex64)
         img = img[None, ...]  # (1, T, H, W)
         T = img.shape[1]
 
