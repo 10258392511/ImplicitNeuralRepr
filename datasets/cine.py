@@ -46,7 +46,7 @@ def load_cine(root_dir, mode="train", img_key="imgs", ds_type="2d+time", if_retu
     ds = TensorDataset(ds)
 
     return ds
-
+    
 
 def add_phase(imgs: torch.Tensor, init_shape: Union[tuple, int] = (5, 5), seed=None, mode="spatial"):
     # imgs: (B, C, H, W) or (T, C, H, W)
@@ -74,6 +74,62 @@ def add_phase(imgs: torch.Tensor, init_shape: Union[tuple, int] = (5, 5), seed=N
         imgs_out = imgs * torch.exp(1j * rearrange(phase, "C T H W -> T C H W"))
 
     return imgs_out
+
+
+def kspace_binning(measurement: torch.Tensor, T0: float, mask: torch.Tensor, reduce: str = "mean"):
+    """
+    See kspace_binning_real(.)
+    """
+    measurement_out = kspace_binning_real(torch.real(measurement), T0, mask, reduce) + \
+        1j * kspace_binning_real(torch.imag(measurement), T0, mask, reduce)
+
+    return measurement_out
+
+
+def kspace_binning_real(measurement: torch.Tensor, T0: float, mask: torch.Tensor, reduce: str = "mean"):
+    """
+    measurement: (B, T, H, W, ...)
+    mask: (T, 1, W)
+    reduce: {mean | none}
+
+    T := (T0 - 1) * n + n_mod
+    """
+    broadcast_shape_tail = tuple([1 for _ in range(measurement.ndim - 4)])
+    mask = mask.reshape(1, *mask.shape, *broadcast_shape_tail).expand_as(measurement)  # (1, T, 1, W, ...) -> (B, T, H, W, ...)
+    B, T, H, W = measurement.shape[:4]
+    n_mod = T % (T0 - 1)
+    n = T // (T0 - 1)
+    measurement = measurement.clone()
+    measurement[~mask] = torch.nan
+    measurement_n = measurement[:, :-n_mod, ...]  # (B, T', H, W, ...) where T' := (T0 - 1) * n
+    measurement_n = measurement_n.reshape(B, -1, n, *measurement_n.shape[2:])  # (B, T0 - 1, n, H, W, ...)
+    measurement_n_mod = measurement[:, -n_mod:, ...].unsqueeze(1)  # (B, n_mod, H, W) -> (B, 1, n_mod, H, W, ...)
+    measurement_out = None
+    if reduce == "mean":
+        # (B, T0, H, W, ...)
+        measurement_out = torch.zeros((B, T0, H, W) + measurement.shape[4:], dtype=measurement.dtype, device=measurement.device)
+        measurement_out[:, :-1, ...] = torch.nanmean(measurement_n, dim=2)  # (B, T0 - 1, H, W, ...)
+        measurement_out[:, -1:, ...] = torch.nanmean(measurement_n_mod, dim=2)  # (B, 1, H, W, ...)
+
+    elif reduce == "none":
+        # measurement_out = torch.zeros_like(measurement)  # (B, T, H, W, ...)
+        measurement_n_mean = torch.nanmean(measurement_n, dim=2, keepdim=True).expand_as(measurement_n)  # (B, T0 - 1, 1 -> n, H, W, ...)
+        measurement_n_mod_mean = torch.nanmean(measurement_n_mod, dim=2, keepdim=True).expand_as(measurement_n_mod)  # (B, 1, 1 -> n_mod, H, W, ...)
+        
+        mask_iter = measurement_n.isnan()
+        measurement_n[mask_iter] = measurement_n_mean[mask_iter]
+        mask_iter = measurement_n_mod.isnan()
+        measurement_n_mod[mask_iter] = measurement_n_mod_mean[mask_iter]
+
+        measurement_n = measurement_n.reshape(B, -1, *measurement.shape[2:])  # (B, T', H, W, ...)
+        measurement_n_mod = measurement_n_mod.reshape(B, -1, *measurement.shape[2:])  # (B, n_mod, H, W, ...)
+        measurement_out = torch.cat([measurement_n, measurement_n_mod], dim=1)  # (B, T, H, W, ...)
+        measurement_out = torch.nan_to_num(measurement_out, 0.)
+
+    else:
+        raise NotImplementedError
+    
+    return measurement_out
 
 
 class CINEImageKSPDataset(Dataset):
@@ -171,10 +227,6 @@ class CINEImageKSDownSampleDataset(Dataset):
 
         # fixed settings
         self.input_T = self.params["input_T"]
-        self.max_undersampling_rate = 6.
-        self.scales = np.array([1., 2., 3.])
-        self.undersampling_rates = self.max_undersampling_rate / self.scales  # [6., 3., 2.]
-        self.max_seed = 10000
 
         # init SENSE for all R
         self.mask_config = mask_config
@@ -182,10 +234,8 @@ class CINEImageKSDownSampleDataset(Dataset):
         self.res = self.params["res"]
         if self.res == 127:
             self.res = 128
-        for scale_iter, u_rate_iter in zip(self.scales, self.undersampling_rates):
-            self.__init_lin_tfm(scale_iter, u_rate_iter)  # keys: 2., 3., 6.
         
-        self.test_lin_tfm = self.__init_lin_tfm(1., self.params["test_undersample_rate"])
+        self.test_lin_tfm = self.__init_lin_tfm(1., self.params["test_undersample_rate"], mode="test")
         
         # load CINE64/127
         if self.params["res"] == 64:
@@ -215,19 +265,20 @@ class CINEImageKSDownSampleDataset(Dataset):
                 self.indices = indices[split_idx:]
             else:
                 raise KeyError("Invalid mode")
-        self.cine_ds = self.cine_ds[self.indices, ...]
+        
+        self.cine_ds = self.cine_ds[self.indices, ...]  # (N', T, H', W')
+        self.t_grid = torch.linspace(-1, 1, self.cine_ds.shape[1])  # (T,)
     
-    def __init_lin_tfm(self, scale: float, undersampling_rate: float):
+    def __init_lin_tfm(self, scale: float, undersampling_rate: float, mode=None):
         """
         scale * undersampling_rate = .max_undersampling_rate
         """
         mask_params = self.mask_config[undersampling_rate]
-        T_in = self.input_T if self.params["mode"] != "test" else self.params["T"]
+        if mode is None:
+            mode = self.params["mode"]
+        T_in = self.input_T if mode != "test" else self.params["T"]
         seed = self.params["seed"]
 
-        # # TODO: comment out
-        # mask_params = self.mask_config[self.params["test_undersample_rate"]]
-        # ###################
         lin_tfm_params = {
             "sens_type": "exp",
             "num_sens": 2,
@@ -245,65 +296,27 @@ class CINEImageKSDownSampleDataset(Dataset):
         return self.cine_ds.shape[0]
     
     def __getitem__(self, idx):
-        if self.params["mode"] == "test":
-            # no data augmentation
-            img = self.cine_ds[idx]  # (T, H, W)
-            # lin_tfm = self.lin_tfm_dict[self.max_undersampling_rate]
-            lin_tfm = self.test_lin_tfm
-            measurement = lin_tfm(img)  # R = 6
-            coord = torch.linspace(-1, 1, self.params["T"])
-            out_dict = {
-                IMAGE_KEY: img.to(torch.complex64),  # (T, H, W)
-                MEASUREMENT_KEY: measurement,
-                ZF_KEY: lin_tfm.conj_op(measurement),
-                COORD_KEY: coord  # (T,)
-            }
-
-            return out_dict
-        
-        # data augmentation: adding phase, downsampling t, undersampling mask & random cropping
-        if self.params["mode"] == "train":
-            seed = np.random.randint(self.max_seed)
-        else:
-            seed = self.params["seed"] + idx # val: fixed seed
+        img = self.cine_ds[idx, ...]  # (T, H, W)
 
         # adding phase
-        img = self.cine_ds[idx]  # (T, H, W)  
         if np.random.rand() <= self.params["data_aug_p"]:    
-            img = add_phase(img[:, None, ...], init_shape=(5, 5, 5),  seed=seed, mode="2d+time")
+            img = add_phase(img[:, None, ...], init_shape=(5, 5, 5),  seed=None, mode="2d+time")
             img = img[:, 0, ...]  # (T, 1, H, W) -> (T, H, W)
         else:
             img = img.to(torch.complex64)
         img = img[None, ...]  # (1, T, H, W)
-        T = img.shape[1]
 
-        # random cropping
-        scale_idx = np.random.randint(len(self.scales)) if self.params["mode"] == "train" else idx % len(self.undersampling_rates)
-        scale = self.scales[scale_idx]
-        undersampling_rate = self.undersampling_rates[scale_idx]
-        win_size = int(scale * self.input_T)
-        t_start = np.random.randint(T - win_size + 1)
-        img = img[:, t_start:t_start + win_size, ...]  # (1, T', H, W)
-        t_grid = torch.linspace(-1, 1, win_size)  # (T',)
-        if self.params["mode"] == "train":
-            sampled_t_inds = torch.randperm(win_size)[:self.input_T]  # (T0,)
-        else:
-            sampled_t_inds = torch.arange(0, t_grid.shape[0], scale).long()
-        img_sampled = img[:, sampled_t_inds, ...]  # (1, T0, H, W)
-        t_grid_sampled = t_grid[sampled_t_inds]  # (T0,)
+        measurement = self.test_lin_tfm(img)  # (1, T, H', W', num_sens)
+        measurement = kspace_binning(measurement, self.input_T, self.test_lin_tfm.random_under_fourier.mask)  # (1, T0, H', W', num_sens)
 
-        # downsampling t & undersampling mask
-        lin_tfm = self.lin_tfm_dict[undersampling_rate]
-        measurement = lin_tfm(img)  # (1, T0, H, W, num_sens)
-
-        # img: (T', H, W) (high res), measurement: (T0, H, W, num_sens)
-        img_sampled = img_sampled.squeeze(0)  # (1, T0, H, W) -> (T0, H, W)
+        img = img.squeeze(0)  # (1, T0, H, W) -> (T0, H, W)
         measurement = measurement.squeeze(0)  # (1, T0, H, W, num_sens) -> (T0, H, W, num_sens)
+        
         out_dict = {
-            IMAGE_KEY: img_sampled,  # (T0, H, W)
+            IMAGE_KEY: img,  # (T0, H, W)
             MEASUREMENT_KEY: measurement,
-            ZF_KEY: lin_tfm.conj_op(measurement),
-            COORD_KEY: t_grid_sampled  # (T0,)
+            ZF_KEY: self.test_lin_tfm.conj_op(measurement),
+            COORD_KEY: self.t_grid  # (T0,)
         }
         
         return out_dict

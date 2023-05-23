@@ -159,7 +159,41 @@ class LIIFParametric3DConv(nn.Module):
         self.encoder = UNet(**self.params["unet"])
         self.mlp = SirenComplex(self.params["mlp"])
     
-    def forward(self, x_zf: torch.Tensor, t_coord: torch.Tensor, if_debug=False):
+    def forward(self, x_zf: torch.Tensor, t_coord: torch.Tensor):
+        # x_zf: (B, T, H, W), t_coord: (B, T'); T should be fixed to be standard input length
+        B, T, H, W = x_zf.shape
+        T_coord = t_coord.shape[-1]  # T'
+        x_real = torch.real(x_zf)
+        x_imag = torch.imag(x_zf)
+        x = torch.stack([x_real, x_imag], dim=1)  # (B, 2, T, H, W)
+        x_enc = self.encoder(x)  # (B, C, T, H, W)
+        # feat_coord = torch.linspace(-1, 1, T).to(x_zf.device).reshape(1, 1, T).expand(B, 1, T)  # (T,) -> (1, 1, T) -> (B, 1, T)
+        feat_coord = torch.linspace(-1, 1, T).to(x_zf.device)  # (T,)
+
+        d = 2 / (T - 1)
+        t_coord = t_coord.clamp(-1, 1 - self.params["eps_shift"])
+        t_inds = torch.floor((t_coord + 1) / d).long()  # (B, T')
+        tau = t_coord - feat_coord[t_inds]  # (B, T')
+        tau /= d
+        x_enc = rearrange(x_enc, "B C T H W -> B T H W C")
+        t_inds = t_inds.reshape(*t_inds.shape, 1, 1, 1).expand(-1, -1, *x_enc.shape[2:])  # (B, T', H, W, C)
+        x_enc_floor = torch.gather(x_enc, 1, t_inds)  # (B, T', H, W, C)
+        x_enc_ceil = torch.gather(x_enc, 1, t_inds + 1)  # (B, T', H, W, C)
+        preds = []
+
+        t_coord = t_coord.reshape(*t_coord.shape, 1, 1, 1).expand(-1, -1, H, W, -1)  # (B, T', H, W, 1)
+        for x_enc_iter in [x_enc_floor, x_enc_ceil]:
+            mlp_in = torch.cat([x_enc_iter, t_coord], dim=-1)  # (B, T', H, W, C + 1)
+            pred_iter = self.mlp(mlp_in)  # (B, T', H, W)
+            preds.append(pred_iter)
+
+        tau = tau.reshape(*tau.shape, 1, 1, 1)  # (B, T', 1, 1, 1)
+        x_out = preds[0] * (1 - tau) + preds[1] * tau
+
+        # (B, T', H, W)
+        return x_out
+    
+    def forward_bilinear(self, x_zf: torch.Tensor, t_coord: torch.Tensor, if_debug=False):
         # x_zf: (B, T, H, W), t_coord: (B, T'); T should be fixed to be standard input length
         B, T, H, W = x_zf.shape
         T_coord = t_coord.shape[-1]  # T'

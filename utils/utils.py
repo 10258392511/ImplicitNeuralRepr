@@ -224,3 +224,11 @@ def siren_param_hist(model: SirenComplex, **kwargs):
 
     return fig, axes  
 
+
+# def nanmean(X: torch.Tensor, **kwargs):
+#     if not torch.is_complex(X):
+#         return torch.nanmean(**kwargs)
+
+#     X_out = torch.nanmean(torch.real(X), **kwargs) + 1j * torch.nanmean(torch.imag(X), **kwargs)
+
+#     return X_out
