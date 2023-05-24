@@ -25,7 +25,7 @@ from ImplicitNeuralRepr.models import load_model, reload_model
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
 from ImplicitNeuralRepr.pl_modules.trainers import TrainLIIF3DConv
 from pytorch_lightning.callbacks import ModelCheckpoint
-from ImplicitNeuralRepr.pl_modules.callbacks import TrainLIIF3DConvCallback, TrainLIIF3DConvDebugCallback
+from ImplicitNeuralRepr.pl_modules.callbacks import TrainLIIFCallback, TrainLIIF3DConvCallback, TrainLIIF3DConvDebugCallback
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from einops import rearrange
@@ -43,9 +43,9 @@ if __name__ == "__main__":
     parser.add_argument("--num_workers", type=int, default=0)
     # Callback
     parser.add_argument("--test_idx", type=int, default=-1)
-    # sliding window inference
-    parser.add_argument("--upsample_rates", type=float, nargs="+", default=[1., 4.])
-    parser.add_argument("--overlap", type=float, default=0.25)
+    # # sliding window inference
+    # parser.add_argument("--upsample_rates", type=float, nargs="+", default=[1., 4.])
+    # parser.add_argument("--overlap", type=float, default=0.25)
     # training
     parser.add_argument("--num_epochs", type=int, default=200)
     parser.add_argument("--val_interval", type=int, default=20)
@@ -130,11 +130,12 @@ if __name__ == "__main__":
         "save_dir": args_dict["output_dir"],
         "save_interval": args_dict["val_interval"],
         "test_idx": args_dict["test_idx"],
-        "upsample_rates": args_dict["upsample_rates"],
-        "roi_size": config_dict["dataset"]["input_T"],
-        "overlap": args_dict["overlap"]
+        # "upsample_rates": args_dict["upsample_rates"],
+        # "roi_size": config_dict["dataset"]["input_T"],
+        # "overlap": args_dict["overlap"]
     }
     train_callback = TrainLIIF3DConvCallback(train_callback_params)
+
     callbacks.append(train_callback)
     if args_dict["if_debug_detail"]:
         debug_callback_params = {

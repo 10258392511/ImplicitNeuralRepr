@@ -184,10 +184,10 @@ class LIIFParametric3DConv(nn.Module):
         t_coord = t_coord.reshape(*t_coord.shape, 1, 1, 1).expand(-1, -1, H, W, -1)  # (B, T', H, W, 1)
         for x_enc_iter in [x_enc_floor, x_enc_ceil]:
             mlp_in = torch.cat([x_enc_iter, t_coord], dim=-1)  # (B, T', H, W, C + 1)
-            pred_iter = self.mlp(mlp_in)  # (B, T', H, W)
+            pred_iter = self.mlp(mlp_in).squeeze(-1)  # (B, T', H, W, 1) -> (B, T', H, W)
             preds.append(pred_iter)
 
-        tau = tau.reshape(*tau.shape, 1, 1, 1)  # (B, T', 1, 1, 1)
+        tau = tau.reshape(*tau.shape, 1, 1)  # (B, T', 1, 1)
         x_out = preds[0] * (1 - tau) + preds[1] * tau
 
         # (B, T', H, W)

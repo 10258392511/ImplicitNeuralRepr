@@ -662,13 +662,14 @@ class TrainLIIF3DConv(LightningModule):
         
         return loss
     
-    def shared_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
+    def shared_step(self, batch: Any, batch_idx: int, **kwargs) -> Union[STEP_OUTPUT, None]:
         # for .training_step(.) and .validation_step(.)
         img = batch[IMAGE_KEY]  # (B, T0, H, W)
         img_zf = batch[ZF_KEY]
         t_coord = batch[COORD_KEY]  # (B, T0)
         img_pred = self.model(img_zf, t_coord)  # (B, T0, H, W)
-        loss = self.compute_l1_loss_complex(img_pred, img)
+        if_reduce = kwargs.get("if_reduce", True)
+        loss = self.compute_l1_loss_complex(img_pred, img, if_reduce=if_reduce)
 
         return loss, img_pred
     
@@ -687,21 +688,26 @@ class TrainLIIF3DConv(LightningModule):
 
         return loss
 
-    def predict_step(self, batch: Any, batch_idx: int, **kwargs) -> Any:
-        """
-        kwargs: upsample_rate, roi_size, overlap
-        """
-        img = batch[IMAGE_KEY]  # (B, T0, H, W)
-        img_zf = batch[ZF_KEY]
-        upsampling_rate = kwargs.get("upsample_rate", 1.)
-        roi_size = kwargs.get("roi_size", 8)
-        overlap = kwargs.get("overlap", 0.25)
+    # def predict_step(self, batch: Any, batch_idx: int, **kwargs) -> Any:
+    #     """
+    #     kwargs: upsample_rate, roi_size, overlap
+    #     """
+    #     img = batch[IMAGE_KEY]  # (B, T0, H, W)
+    #     img_zf = batch[ZF_KEY]
+    #     upsampling_rate = kwargs.get("upsample_rate", 1.)
+    #     roi_size = kwargs.get("roi_size", 8)
+    #     overlap = kwargs.get("overlap", 0.25)
 
-        img_pred = sliding_window_inference(img_zf, upsampling_rate, roi_size, overlap, self.model)  # (B, T, H, W)
-        error_val = None
-        if img_pred.shape == img.shape:
-            error_val = self.compute_l1_loss_complex(img_pred, img, if_reduce=False)
-            error_val = ptu.to_numpy(error_val)
+    #     img_pred = sliding_window_inference(img_zf, upsampling_rate, roi_size, overlap, self.model)  # (B, T, H, W)
+    #     error_val = None
+    #     if img_pred.shape == img.shape:
+    #         error_val = self.compute_l1_loss_complex(img_pred, img, if_reduce=False)
+    #         error_val = ptu.to_numpy(error_val)
+
+    #     return img_pred, error_val
+
+    def predict_step(self, batch: Any, batch_idx: int, **kwargs) -> Any:
+        error_val, img_pred = self.shared_step(batch, batch_idx, if_reduce=False)
 
         return img_pred, error_val
     

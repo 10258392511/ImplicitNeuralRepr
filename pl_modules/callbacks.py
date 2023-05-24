@@ -226,7 +226,9 @@ class TrainLIIF3DConvCallback(Callback):
         pl_module.model.eval()
 
         self.counter += 1
-        data_dict = trainer.datamodule.test_ds[self.params["test_idx"]]
+        # data_dict = trainer.datamodule.test_ds[self.params["test_idx"]]
+        data_dict = trainer.datamodule.val_ds[self.params["test_idx"]]
+
         for key, val in data_dict.items():
             data_dict[key] = val.to(ptu.DEVICE)
 
@@ -247,24 +249,24 @@ class TrainLIIF3DConvCallback(Callback):
         if self.counter % self.params["save_interval"] != 0 and self.counter != trainer.max_epochs - 1:
             return
         
-        batch = {
-            IMAGE_KEY: data_dict[IMAGE_KEY].unsqueeze(0),  # (T, H, W) -> (1, T, H, W),
-            ZF_KEY: data_dict[ZF_KEY].unsqueeze(0)
-        }
-        predict_step_params = {
-            "roi_size": self.params["roi_size"],
-            "overlap": self.params["overlap"]
-        }
+        # batch = {
+        #     IMAGE_KEY: data_dict[IMAGE_KEY].unsqueeze(0),  # (T, H, W) -> (1, T, H, W),
+        #     ZF_KEY: data_dict[ZF_KEY].unsqueeze(0)
+        # }
+        # predict_step_params = {
+        #     "roi_size": self.params["roi_size"],
+        #     "overlap": self.params["overlap"]
+        # }
 
-        for upsample_rate_iter in self.params["upsample_rates"]:
-            predict_step_params["upsample_rate"] = upsample_rate_iter
-            pred, error_val = pl_module.predict_step(batch, None, **predict_step_params)  # (1, T, H, W), (1,)
-            pred = pred.transpose(0, 1)  # (1, T, H, W) -> (T, 1, H, W)
-            error_val = [-1.] if error_val is None else error_val
-            error_val = error_val[0]
-            torch.save(pred.detach().cpu(), os.path.join(self.params["save_dir"], f"recons_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}_error_{error_val: .4f}.pt"))
-            save_vol_as_gif(torch.abs(pred), save_dir=self.params["save_dir"], filename=f"mag_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")
-            save_vol_as_gif(torch.angle(pred), save_dir=self.params["save_dir"], filename=f"phase_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")
+        # for upsample_rate_iter in self.params["upsample_rates"]:
+        #     predict_step_params["upsample_rate"] = upsample_rate_iter
+        #     pred, error_val = pl_module.predict_step(batch, None, **predict_step_params)  # (1, T, H, W), (1,)
+        #     pred = pred.transpose(0, 1)  # (1, T, H, W) -> (T, 1, H, W)
+        #     error_val = [-1.] if error_val is None else error_val
+        #     error_val = error_val[0]
+        #     torch.save(pred.detach().cpu(), os.path.join(self.params["save_dir"], f"recons_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}_error_{error_val: .4f}.pt"))
+        #     save_vol_as_gif(torch.abs(pred), save_dir=self.params["save_dir"], filename=f"mag_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")
+        #     save_vol_as_gif(torch.angle(pred), save_dir=self.params["save_dir"], filename=f"phase_{self.counter + 1}_upsample_{upsample_rate_iter: .1f}.gif")
 
         data_dict = trainer.datamodule.val_ds[self.params["test_idx"]]
         batch = {key: val.unsqueeze(0).to(ptu.DEVICE) for key, val in data_dict.items()}

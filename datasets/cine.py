@@ -110,7 +110,7 @@ def kspace_binning_real(measurement: torch.Tensor, T0: float, mask: torch.Tensor
         measurement_out = torch.zeros((B, T0, H, W) + measurement.shape[4:], dtype=measurement.dtype, device=measurement.device)
         measurement_out[:, :-1, ...] = torch.nanmean(measurement_n, dim=2)  # (B, T0 - 1, H, W, ...)
         measurement_out[:, -1:, ...] = torch.nanmean(measurement_n_mod, dim=2)  # (B, 1, H, W, ...)
-
+        
     elif reduce == "none":
         # measurement_out = torch.zeros_like(measurement)  # (B, T, H, W, ...)
         measurement_n_mean = torch.nanmean(measurement_n, dim=2, keepdim=True).expand_as(measurement_n)  # (B, T0 - 1, 1 -> n, H, W, ...)
@@ -124,11 +124,11 @@ def kspace_binning_real(measurement: torch.Tensor, T0: float, mask: torch.Tensor
         measurement_n = measurement_n.reshape(B, -1, *measurement.shape[2:])  # (B, T', H, W, ...)
         measurement_n_mod = measurement_n_mod.reshape(B, -1, *measurement.shape[2:])  # (B, n_mod, H, W, ...)
         measurement_out = torch.cat([measurement_n, measurement_n_mod], dim=1)  # (B, T, H, W, ...)
-        measurement_out = torch.nan_to_num(measurement_out, 0.)
-
+        
     else:
         raise NotImplementedError
     
+    measurement_out = torch.nan_to_num(measurement_out, 0.)
     return measurement_out
 
 
@@ -299,7 +299,7 @@ class CINEImageKSDownSampleDataset(Dataset):
         img = self.cine_ds[idx, ...]  # (T, H, W)
 
         # adding phase
-        if np.random.rand() <= self.params["data_aug_p"]:    
+        if self.params["mode"] == "train" and np.random.rand() <= self.params["data_aug_p"]:    
             img = add_phase(img[:, None, ...], init_shape=(5, 5, 5),  seed=None, mode="2d+time")
             img = img[:, 0, ...]  # (T, 1, H, W) -> (T, H, W)
         else:
