@@ -22,6 +22,7 @@ setup(
         "pytorch_lightning",
         "monai",
         "PyYAML",
-        "einops"
+        "einops",
+        "h5py"
     ]
 )
