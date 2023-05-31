@@ -24,6 +24,7 @@ from .simplified_sampling_datasets import (
     SpatialTemporalRegSamplingDM,
     FracSpatialTemporalRegDM
 )
+from .cine_cont import CINEContDM
 from typing import Sequence, Union
 from einops import rearrange
 

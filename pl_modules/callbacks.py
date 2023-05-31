@@ -9,7 +9,13 @@ import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 from pytorch_lightning.callbacks import Callback
 from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
 from einops import rearrange
-from ImplicitNeuralRepr.configs import IMAGE_KEY, MEASUREMENT_KEY, ZF_KEY, COORD_KEY
+from ImplicitNeuralRepr.configs import (
+    IMAGE_KEY, 
+    MEASUREMENT_KEY, 
+    ZF_KEY, 
+    COORD_KEY,
+    MASK_KEY
+)
 from typing import Union
 
 
@@ -235,6 +241,7 @@ class TrainLIIF3DConvCallback(Callback):
         if self.counter == 0:
             img_test = data_dict[IMAGE_KEY]  # (T, H, W)
             img_zf = data_dict[ZF_KEY]
+            mask = data_dict.get(MASK_KEY, None)  # (T', 1, W)
             
             img_test = img_test.unsqueeze(1)  # (T, H, W) -> (T, 1, H, W)
             torch.save(img_test.detach().cpu(), os.path.join(self.params["save_dir"], f"orig.pt"))
@@ -245,6 +252,10 @@ class TrainLIIF3DConvCallback(Callback):
             torch.save(img_zf.detach().cpu(), os.path.join(self.params["save_dir"], f"zf.pt"))
             save_vol_as_gif(torch.abs(img_zf), save_dir=self.params["save_dir"], filename=f"zf_mag.gif")
             save_vol_as_gif(torch.angle(img_zf), save_dir=self.params["save_dir"], filename=f"zf_phase.gif")
+
+            if mask is not None:
+                mask = rearrange(mask, "T C N -> C N T")  # C = 1
+                vis_images(mask, if_save=True, save_dir=self.params["save_dir"], filename=f"mask.png")
         
         if self.counter % self.params["save_interval"] != 0 and self.counter != trainer.max_epochs - 1:
             return

@@ -1,0 +1,34 @@
+dataset:
+  # mode: "train"  # no need to specify; set in DM
+  seed: 0
+  train_val_split: 0.9
+  T_high: 32
+  T_low: 8
+  T_query: 16
+  R_25: 6
+
+model:
+  name: "LIIFParametric3DConv"
+  eps_shift: !!float 1e-6
+  mlp:
+    # in_features: 3  # must >= 2: 1 + feature_map_dim; should be overidden by unet.out_channels + 1
+    hidden_features: 128
+    out_features: 2
+    hidden_layers: 4
+    outermost_linear: true
+    sine_portion: 1.
+  unet:
+    spatial_dims: 3
+    in_channels: 2
+    out_channels: 16  # feature_map_dim
+    channels: [16, 32, 64]
+    strides: [2, 1]
+
+optimization:
+  opt_name: "AdamW"
+  opt_params: 
+    lr: !!float 1e-4
+  scheduler_name: "StepLR"
+  scheduler_params:
+    step_size: 10
+    gamma: 0.5

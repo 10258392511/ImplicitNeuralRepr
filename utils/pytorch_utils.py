@@ -25,3 +25,11 @@ def grid_sample1D(kernel: torch.Tensor, grid: torch.Tensor, mode: str = "nearest
     # print("-" * 100)
 
     return output
+
+
+def grid_sample_cplx(imgs, disps, **kwargs):
+    im_r = F.grid_sample(imgs.real, disps, **kwargs)
+    im_i = F.grid_sample(imgs.imag, disps, **kwargs)
+    
+    return torch.complex(im_r, im_i)
+

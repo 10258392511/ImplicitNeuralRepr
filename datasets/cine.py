@@ -313,7 +313,7 @@ class CINEImageKSDownSampleDataset(Dataset):
         measurement = measurement.squeeze(0)  # (1, T0, H, W, num_sens) -> (T0, H, W, num_sens)
         
         out_dict = {
-            IMAGE_KEY: img,  # (T0, H, W)
+            IMAGE_KEY: img,  # (T, H, W)
             MEASUREMENT_KEY: measurement,
             ZF_KEY: self.test_lin_tfm.conj_op(measurement),
             COORD_KEY: self.t_grid  # (T0,)
