@@ -191,7 +191,7 @@ class CINEContDataset(Dataset):
             IMAGE_KEY: img,  # (T', H', W')
             MEASUREMENT_KEY: kspc,  # (T_low, H', W')
             ZF_KEY: k2i_complex(kspc, dims=-1),  # (T_low, H', W')
-            COORD_KEY: taus,  # (T',),
+            COORD_KEY: 2 * taus - 1,  # (T',),
             MASK_KEY: mask  # (T_low, 1, W')
         }
 
