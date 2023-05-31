@@ -34,11 +34,10 @@ from datetime import datetime
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task_name", default="2d+time_liif_3d_conv")
+    parser.add_argument("--task_name", default="2d+time_liif_cont")
     parser.add_argument("--log_dir", default="../2d_time_liif_3d_conv_logs")
     parser.add_argument("--output_dir", default="../outputs_implicit_neural_repr/2d_time_liif_3d_conv")
     # DataModule
-    parser.add_argument("--data_filename", required=True)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--test_batch_size", type=int, default=4)
     parser.add_argument("--num_workers", type=int, default=0)
@@ -70,7 +69,6 @@ if __name__ == "__main__":
     
     # load data
     dm_params = {
-        "data_filename": args_dict["data_filename"],
         "batch_size": args_dict["batch_size"],
         "test_batch_size": args_dict["test_batch_size"],
         "num_workers": args_dict["num_workers"]
@@ -110,9 +108,6 @@ if __name__ == "__main__":
         "save_dir": args_dict["output_dir"],
         "save_interval": args_dict["val_interval"],
         "test_idx": args_dict["test_idx"],
-        # "upsample_rates": args_dict["upsample_rates"],
-        # "roi_size": config_dict["dataset"]["input_T"],
-        # "overlap": args_dict["overlap"]
     }
     train_callback = TrainLIIF3DConvCallback(train_callback_params)
 

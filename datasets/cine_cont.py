@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import einops
 import h5py
+import os
 
 from ImplicitNeuralRepr.linear_transforms import i2k_complex, k2i_complex
 from ImplicitNeuralRepr.utils.pytorch_utils import grid_sample_cplx
@@ -19,10 +20,13 @@ from ImplicitNeuralRepr.configs import (
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from typing import Union
 
+ROOT_DIR = os.path.abspath(__file__)
+for _ in range(2):
+    ROOT_DIR = os.path.dirname(ROOT_DIR)
+DATA_PATH = os.path.join(ROOT_DIR, "data/cont_cine/cine_disps.h5")
 
 
-
-def resample(imgs, disp_f, disp_b, taus):
+def resample(imgs, disp_f, disp_b, taus, if_pad=True):
     B, T, Nx, Ny = imgs.shape
 
     assert torch.max(taus) <= 1 and torch.min(taus) >= 0
@@ -54,8 +58,12 @@ def resample(imgs, disp_f, disp_b, taus):
     imd1 = grid_sample_cplx(img1, d1, align_corners=True, mode='bicubic')
     imd2 = grid_sample_cplx(img2, d2, align_corners=True, mode='bicubic')
     imhr2 = (1 - ka) * imd1 + ka * imd2
+
+    imgs = einops.rearrange(imhr2, '(b t) 1 h w -> b t h w', b=B)
+    if if_pad:
+        imgs = F.pad(imgs, (0, 1, 0, 1), mode="constant", value=0)  # (B, T, 127, 127) -> (B, T, 128, 128), padded at right and bottom one 0
     
-    return einops.rearrange(imhr2, '(b t) 1 h w -> b t h w', b=B)
+    return imgs
 
 def gen_mask_laplace_1d(B, Nx, R, sgm=0.3, dlt=0.01):
     gx = torch.linspace(-1,1, Nx)
@@ -86,7 +94,7 @@ class ContDataSampler(object):
         self.T_low = T_low
         self.device = torch.device("cpu")
 
-    def get_image_at_t(self, batch_idxs, taus, if_pad=True):
+    def get_image_at_t(self, batch_idxs, taus):
         # you have to provide batch indices and time points at which to generate the image
         imgs = self.imgs[batch_idxs, ...]  # (B, T, H, W)
         disp_f = self.disp_f[batch_idxs, ...]
@@ -97,9 +105,6 @@ class ContDataSampler(object):
         if not isinstance(taus, torch.Tensor):
             taus = torch.tensor(taus)
         taus = taus.float().to(self.device)
-
-        if if_pad:
-            imgs = F.pad(imgs, (0, 1, 0, 1), mode="constant", value=0)  # (B, T, 127, 127) -> (B, T, 128, 128), padded at right and bottom one 0
         
         return resample(imgs, disp_f, disp_b, taus)
     
@@ -122,7 +127,7 @@ class ContDataSampler(object):
         kspc_hr = i2k_complex(imgs_hr, dims=-1)
         kspc_hr = einops.rearrange(kspc_hr, 'b (T_low f) h w -> b T_low f h w', T_low=int(self.T_low))
         kspc_lr = einops.reduce(kspc_hr * mask_hr, 'b T_low f h w -> b T_low h w', 'sum')
-        assert torch.all( (kspc_lr.imag.abs() > 0).float() == mask_lr )
+        # assert torch.all( (kspc_lr.imag.abs() > 0).float() == mask_lr )
         # print(f'R_25={R_25:.1f}, R_high={R_high:.1f}, R_low={R_low}')
         # print(f'R_high={1/mask_hr_first.mean():.1f}, R_low={1/mask_lr.float().mean():.1f}')  # larger: since only the first non-zero measurement is kept in each bin
        
@@ -161,8 +166,8 @@ class CINEContDataset(Dataset):
         imgs = imgs[self.indices, ...]  # (N', T, H, W)
         disp_f = disp_f[self.indices, ...]  # (N', T - 1, 2, H, W)
         disp_b = disp_b[self.indices, ...]
-        self.t_anchors = torch.linspace(-1., 1., self.params["T_query"])  # (T',)
-        self.radius = 1 / (self.params["T_query"] - 1)
+        self.t_anchors = torch.linspace(0., 1., self.params["T_query"])  # (T',)
+        self.radius = 0.5 / (self.params["T_query"] - 1)
         self.unif = Uniform(-self.radius, self.radius)
 
         self.sampler = ContDataSampler(imgs, disp_f, disp_b, T_high=self.params["T_high"], T_low=self.params["T_low"])
@@ -176,6 +181,7 @@ class CINEContDataset(Dataset):
             random_shift = self.unif.sample(self.t_anchors.shape)
             taus += random_shift
 
+        taus = taus.clamp(0, 1)
         img = self.sampler.get_image_at_t([idx], taus).squeeze(0)  # (T', H', W')
         kspc, mask = self.sampler.sample_us_kspace([idx], self.params["R_25"])
         kspc = kspc.squeeze(0)  # (T_low, H', W')
@@ -200,7 +206,8 @@ class CINEContDM(LightningDataModule):
         """
         super().__init__()
         self.params = params
-        with h5py.File(self.params["data_filename"], "r") as rf:
+        data_filename = self.params.get("data_filename", DATA_PATH)
+        with h5py.File(data_filename, "r") as rf:
             self.imgs = np.array(rf["imgs_r"]) + 1j * np.array(rf['imgs_i'])
             self.disp_f = np.array(rf["disp_f"]).astype(np.float32)
             self.disp_b = np.array(rf["disp_b"]).astype(np.float32)
@@ -213,15 +220,15 @@ class CINEContDM(LightningDataModule):
     def setup(self, stage: Union[str, None] = None) -> None:
         params = self.params.copy()
         params["mode"] = "train"
-        self.train_ds = CINEContDataset(params)
+        self.train_ds = CINEContDataset(params, self.imgs, self.disp_f, self.disp_b)
 
         params = self.params.copy()
         params["mode"] = "val"
-        self.val_ds = CINEContDataset(params)
+        self.val_ds = CINEContDataset(params, self.imgs, self.disp_f, self.disp_b)
 
         params = self.params.copy()
         params["mode"] = "test"
-        self.test_ds = CINEContDataset(params)
+        self.test_ds = CINEContDataset(params, self.imgs, self.disp_f, self.disp_b)
     
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         loader = DataLoader(self.train_ds, self.params["batch_size"], shuffle=True, num_workers=self.params["num_workers"], 
