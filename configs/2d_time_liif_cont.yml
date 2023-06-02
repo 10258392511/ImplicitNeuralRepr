@@ -25,7 +25,7 @@ model:
     strides: [2, 1]
 
 training:
-  diff_t_weight: 0.01
+  diff_t_weight: 0.
 
 optimization:
   opt_name: "AdamW"

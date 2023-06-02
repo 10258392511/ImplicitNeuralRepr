@@ -692,7 +692,7 @@ class TrainLIIF3DConv(LightningModule):
         loss_first_order = self.compute_diff_t_loss(img_pred, img, t_coord, if_reduce=if_reduce)
         loss = loss_zero_order + loss_first_order
         if if_return_zero_order:
-            return loss, img_pred
+            return loss_zero_order, img_pred
 
         return loss, img_pred
     
