@@ -650,6 +650,7 @@ class TrainLIIF3DConv(LightningModule):
         super().__init__()
         self.model = model
         self.config = config
+        self.finite_diff_t = FiniteDiff(dim=1)  # for (B, T, H, W)
 
     @staticmethod
     def compute_l1_loss_complex(x_pred: torch.Tensor, x: torch.Tensor, eps=1e-4, if_reduce=True):
@@ -661,7 +662,24 @@ class TrainLIIF3DConv(LightningModule):
             loss = loss.mean()
         
         return loss
-    
+
+    def compute_diff_t_loss(self, x_pred: torch.Tensor, x: torch.Tensor, t_coord: torch.Tensor, eps=1e-4, if_reduce=True):
+        # x_pred, x: (B, T, H, W); t_coord: (B, T)
+        t_coord = t_coord.reshape(*t_coord.shape, 1, 1)
+        partial_t = self.finite_diff_t(t_coord)
+        partial_x_pred = self.finite_diff_t(torch.abs(x_pred))
+        partial_x = self.finite_diff_t(torch.abs(x))
+        partial_x_pred_partial_t = partial_x_pred / partial_t
+        partial_x_partial_t = partial_x / partial_t
+        num = torch.abs(partial_x_pred_partial_t - partial_x_partial_t).sum(dim=(1, 2, 3))  # (B,)
+        den = torch.abs(partial_x_partial_t).sum(dim=(1, 2, 3)) + eps  # (B,)
+        finite_t_loss = num / den
+        finite_t_loss *= self.config["training"]["diff_t_weight"]
+        if if_reduce:
+            finite_t_loss = finite_t_loss.mean()
+        
+        return finite_t_loss
+
     def shared_step(self, batch: Any, batch_idx: int, **kwargs) -> Union[STEP_OUTPUT, None]:
         # for .training_step(.) and .validation_step(.)
         img = batch[IMAGE_KEY]  # (B, T0, H, W)
@@ -669,7 +687,12 @@ class TrainLIIF3DConv(LightningModule):
         t_coord = batch[COORD_KEY]  # (B, T0)
         img_pred = self.model(img_zf, t_coord)  # (B, T0, H, W)
         if_reduce = kwargs.get("if_reduce", True)
-        loss = self.compute_l1_loss_complex(img_pred, img, if_reduce=if_reduce)
+        if_return_zero_order = kwargs.get("if_return_zero_order", False)
+        loss_zero_order = self.compute_l1_loss_complex(img_pred, img, if_reduce=if_reduce)
+        loss_first_order = self.compute_diff_t_loss(img_pred, img, t_coord, if_reduce=if_reduce)
+        loss = loss_zero_order + loss_first_order
+        if if_return_zero_order:
+            return loss, img_pred
 
         return loss, img_pred
     
@@ -707,7 +730,7 @@ class TrainLIIF3DConv(LightningModule):
     #     return img_pred, error_val
 
     def predict_step(self, batch: Any, batch_idx: int, **kwargs) -> Any:
-        error_val, img_pred = self.shared_step(batch, batch_idx, if_reduce=False)
+        error_val, img_pred = self.shared_step(batch, batch_idx, if_reduce=False, if_return_zero_order=True)
 
         return img_pred, error_val
     
