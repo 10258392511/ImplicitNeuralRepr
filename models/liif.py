@@ -5,10 +5,20 @@ import torch.nn.functional as F
 import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from monai.networks.nets import UNet
+from monai.networks.blocks import Convolution
 from ImplicitNeuralRepr.models.siren import SirenComplex
+from ImplicitNeuralRepr.linear_transforms import i2k_complex, k2i_complex
+from ImplicitNeuralRepr.configs import (
+    IMAGE_KEY,
+    MEASUREMENT_KEY,
+    ZF_KEY,
+    COORD_KEY,
+    MASK_KEY
+)
 from collections import deque, defaultdict
 from einops import rearrange
 from tqdm import trange
+from typing import Union
 
 
 class MLP(nn.Module):
@@ -159,7 +169,7 @@ class LIIFParametric3DConv(nn.Module):
         self.encoder = UNet(**self.params["unet"])
         self.mlp = SirenComplex(self.params["mlp"])
     
-    def forward(self, x_zf: torch.Tensor, t_coord: torch.Tensor):
+    def forward(self, x_zf: torch.Tensor, t_coord: torch.Tensor, **kwargs):
         # x_zf: (B, T, H, W), t_coord: (B, T'); T should be fixed to be standard input length
         B, T, H, W = x_zf.shape
         T_coord = t_coord.shape[-1]  # T'
@@ -179,6 +189,7 @@ class LIIFParametric3DConv(nn.Module):
         t_inds = t_inds.reshape(*t_inds.shape, 1, 1, 1).expand(-1, -1, *x_enc.shape[2:])  # (B, T', H, W, C)
         x_enc_floor = torch.gather(x_enc, 1, t_inds)  # (B, T', H, W, C)
         x_enc_ceil = torch.gather(x_enc, 1, t_inds + 1)  # (B, T', H, W, C)
+        # taus = [tau, -(1 - tau)]
         preds = []
 
         t_coord = t_coord.reshape(*t_coord.shape, 1, 1, 1).expand(-1, -1, H, W, -1)  # (B, T', H, W, 1)
@@ -186,6 +197,12 @@ class LIIFParametric3DConv(nn.Module):
             mlp_in = torch.cat([x_enc_iter, t_coord], dim=-1)  # (B, T', H, W, C + 1)
             pred_iter = self.mlp(mlp_in).squeeze(-1)  # (B, T', H, W, 1) -> (B, T', H, W)
             preds.append(pred_iter)
+        
+        # for x_enc_iter, tau_iter in zip([x_enc_floor, x_enc_ceil], taus):
+        #     tau_iter = tau_iter.reshape(*tau_iter.shape, 1, 1, 1).expand(-1, -1, H, W, -1)  # (B, T', H, W, C)
+        #     mlp_in = torch.cat([x_enc_iter, tau_iter], dim=-1)  # (B, T', H, W, C + 1)
+        #     pred_iter = self.mlp(mlp_in).squeeze(-1)  # (B, T', H, W, 1) -> (B, T', H, W)
+        #     preds.append(pred_iter)
 
         tau = tau.reshape(*tau.shape, 1, 1)  # (B, T', 1, 1)
         x_out = preds[0] * (1 - tau) + preds[1] * tau
@@ -361,3 +378,109 @@ def sliding_window_inference(x_zf: torch.Tensor, upsample_rate: float, roi_size:
     
     # (B, T_out, H, W)
     return x_out
+
+
+class LIIFCascade(nn.Module):
+    def __init__(self, params: dict):
+        super().__init__()
+        self.params = params
+        self.enc_tuples = []
+        if self.params["encoder_type"] == "conv":
+            out_channels = self.params["conv"]["out_channels"]
+            self.enc_tuples.append((self.__make_conv_block(2), self.__make_conv_block(out_channels + 2)))
+            for _ in range(self.params["num_cascade_times"] - 1):
+                self.enc_tuples.append((self.__make_conv_block(), self.__make_conv_block(out_channels + 2)))
+
+        elif self.params["encoder_type"] == "unet":
+            out_channels = self.params["unet"]["out_channels"]
+            self.enc_tuples.append((self.__make_unet(2), self.__make_conv_block(out_channels + 2)))
+            for _ in range(self.params["num_cascade_times"] - 1):
+                self.enc_tuples.append((self.__make_unet(), self.__make_conv_block(out_channels + 2)))
+        else:
+            raise NotImplementedError
+        
+        self.params["mlp"]["in_features"] = self.params["unet"]["out_channels"] + 1
+        self.mlp = SirenComplex(self.params["mlp"])
+    
+    def __make_conv_block(self, in_channels: Union[int, None] = None):
+        conv_params = self.params["conv"].copy()
+        if in_channels is not None:
+            conv_params["in_channels"] = in_channels
+        layers = [Convolution(**conv_params)]
+        for _ in range(self.params["num_conv_layers"] - 1):
+            conv_params = self.params["conv"].copy()
+            layers.append(Convolution(**conv_params))
+        
+        conv_params = self.params["conv"].copy()
+        conv_params["conv_only"] = True
+        layers.append(Convolution(**conv_params))
+        net = nn.Sequential(*layers)
+
+        return net
+
+    def __make_unet(self, in_channels: Union[int, None] = None):
+        unet_params = self.params["unet"].copy()
+        if in_channels is not None:
+            unet_params["in_channels"] = in_channels
+        net = UNet(**unet_params)
+
+        return net
+    
+    def encode(self, enc_head: nn.Module, enc_tail: nn.Module, x_last_enc: torch.Tensor, ksp: torch.Tensor, mask: torch.Tensor):
+        enc_head.to(x_last_enc.device)
+        enc_tail.to(x_last_enc.device)
+        B, C, T, H, W = x_last_enc.shape
+        x = enc_head(x_last_enc)  # (B, C or 2, T, H, W) -> (B, C, T, H, W)
+        feat_coord = torch.linspace(-1, 1, T).to(x_last_enc.device)  # (T,)
+        feat_coord = feat_coord.reshape(1, 1, T, 1, 1).expand(B, -1, -1, H, W)  # (B, 1, T, H, W)
+        mlp_in = torch.cat([x, feat_coord], dim=1)  # (B, C + 1, T, H, W)
+        mlp_in = rearrange(mlp_in, "B C T H W -> B T H W C")
+        x_recons = self.mlp(mlp_in).squeeze(-1)  # (B, T, H, W)
+        # ksp: (B, T, H, W), mask: (B, T, 1, W)
+        x_res = k2i_complex(mask * (i2k_complex(x_recons, dims=-1) - ksp), dims=-1)  # (B, T, H, W)
+        x_res = torch.stack([torch.real(x_res), torch.imag(x_res)], dim=1)  # (B, 2, T, H, W)
+        x = torch.cat([x, x_res], dim=1)  # (B, C + 2, T, H, W)
+        x = enc_tail(x)  # (B, C, T, H, W)
+
+        return x
+
+    def forward(self, **data_dict):
+        x = data_dict[IMAGE_KEY]  # (B, T, H, W)
+        ksp = data_dict[MEASUREMENT_KEY]
+        x_zf = data_dict[ZF_KEY]
+        t_coord = data_dict[COORD_KEY]  # (B, T')
+        mask = data_dict[MASK_KEY]  # (B, T, 1, W)
+
+        B, T, H, W = x_zf.shape
+        x_real = torch.real(x_zf)
+        x_imag = torch.imag(x_zf)
+        x_enc = torch.stack([x_real, x_imag], dim=1)  # (B, 2, T, H, W)
+        for conv_head, conv_tail in self.enc_tuples:
+            x_enc = self.encode(conv_head, conv_tail, x_enc, ksp, mask)
+        
+        # x_enc: (B, C, T, H, W)
+        feat_coord = torch.linspace(-1, 1, T).to(x_zf.device)  # (T,)
+
+        d = 2 / (T - 1)
+        t_coord = t_coord.clamp(-1, 1 - self.params["eps_shift"])
+        t_inds = torch.floor((t_coord + 1) / d).long()  # (B, T')
+        tau = t_coord - feat_coord[t_inds]  # (B, T')
+        tau /= d
+        x_enc = rearrange(x_enc, "B C T H W -> B T H W C")
+        t_inds = t_inds.reshape(*t_inds.shape, 1, 1, 1).expand(-1, -1, *x_enc.shape[2:])  # (B, T', H, W, C)
+        x_enc_floor = torch.gather(x_enc, 1, t_inds)  # (B, T', H, W, C)
+        x_enc_ceil = torch.gather(x_enc, 1, t_inds + 1)  # (B, T', H, W, C)
+        preds = []
+
+        t_coord = t_coord.reshape(*t_coord.shape, 1, 1, 1).expand(-1, -1, H, W, -1)  # (B, T', H, W, 1)
+        for x_enc_iter in [x_enc_floor, x_enc_ceil]:
+            mlp_in = torch.cat([x_enc_iter, t_coord], dim=-1)  # (B, T', H, W, C + 1)
+            pred_iter = self.mlp(mlp_in).squeeze(-1)  # (B, T', H, W, 1) -> (B, T', H, W)
+            preds.append(pred_iter)
+
+        tau = tau.reshape(*tau.shape, 1, 1)  # (B, T', 1, 1)
+        x_out = preds[0] * (1 - tau) + preds[1] * tau
+
+        # (B, T', H, W)
+        return x_out
+           

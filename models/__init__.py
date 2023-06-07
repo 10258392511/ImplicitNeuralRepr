@@ -7,7 +7,8 @@ from .liif import (
     LIIFParametric, 
     LIIFParametricComplexSiren, 
     LIIFNonParametric,
-    LIIFParametric3DConv
+    LIIFParametric3DConv,
+    LIIFCascade
 )
 from ImplicitNeuralRepr.configs import load_config
 from typing import Union
@@ -22,7 +23,8 @@ MODEL_NAME_MAP = {
     "LIIFParametric": LIIFParametric,
     "LIIFNonParametric": LIIFNonParametric,
     "LIIFParametricComplexSiren": LIIFParametricComplexSiren,
-    "LIIFParametric3DConv": LIIFParametric3DConv
+    "LIIFParametric3DConv": LIIFParametric3DConv,
+    "LIIFCascade": LIIFCascade
 }
 
 

@@ -170,3 +170,19 @@ if __name__ == "__main__":
         recons = all_recons[data_idx, ...].detach().cpu().clone()  # (T, H, W)
         torch.save(recons, os.path.join(args_dict["output_dir"], "recons.pt"))
         save_vol_as_gif(torch.abs(recons.unsqueeze(1)), save_dir=args_dict["output_dir"], filename="recons_mag.gif")
+
+        num_bad_recons = 10
+        inds = np.argsort(all_errors)[::-1]
+        inds = inds[:num_bad_recons]
+        for ind_iter in inds:
+            data_dict = dm.test_ds[ind_iter]
+            img = data_dict[IMAGE_KEY]  # (T, H, W)
+            img_zf = data_dict[ZF_KEY]
+            # torch.save(img.detach().cpu(), os.path.join(args_dict["output_dir"], "orig.pt"))
+            # torch.save(img_zf.detach().cpu(), os.path.join(args_dict["output_dir"], "zf.pt"))
+            save_vol_as_gif(torch.abs(img.unsqueeze(1)), save_dir=args_dict["output_dir"], filename=f"orig_mag_idx_{ind_iter}.gif")
+            save_vol_as_gif(torch.abs(img_zf.unsqueeze(1)), save_dir=args_dict["output_dir"], filename=f"zf_mag_{ind_iter}.gif")
+
+            recons = all_recons[ind_iter, ...].detach().cpu().clone()  # (T, H, W)
+            # torch.save(recons, os.path.join(args_dict["output_dir"], "recons.pt"))
+            save_vol_as_gif(torch.abs(recons.unsqueeze(1)), save_dir=args_dict["output_dir"], filename=f"recons_mag_{ind_iter}_error_{all_errors[ind_iter]}.gif")

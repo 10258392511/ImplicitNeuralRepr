@@ -118,7 +118,7 @@ def save_vol_as_gif(vol: Union[torch.Tensor, np.ndarray], save_dir: str, filenam
 
     kwargs: duration, if_normalize
     """
-    if_normalize = kwargs.get("if_normalize", True)
+    if_normalize = kwargs.get("if_normalize", False)
     if not os.path.isdir(save_dir):
         os.makedirs(save_dir)
 
