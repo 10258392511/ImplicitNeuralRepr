@@ -25,8 +25,12 @@ def vis_volume(data):
 
 def vis_images(*images, **kwargs):
     """
-    kwargs: if_save, save_dir, filename, titles, figsize_unit
+    kwargs: if_save, save_dir, filename, titles, figsize_unit, normalize: {linear | none},
+    vmins, vmaxs
     """
+    normalize = kwargs.get("normalize", None)
+    vmins = kwargs.get("vmins", None)
+    vmaxs = kwargs.get("vmaxs", None)
     figsize_unit = kwargs.get("figsize_unit", 3.6)
     num_imgs = len(images)
     fig, axes = plt.subplots(1, num_imgs, figsize=(figsize_unit * num_imgs, figsize_unit))
@@ -41,7 +45,10 @@ def vis_images(*images, **kwargs):
         if isinstance(img_iter, torch.Tensor):
             img_iter = ptu.to_numpy(img_iter)
         img_iter = img_iter[channel]
-        handle = axis.imshow(img_iter, cmap="gray")
+        if normalize is None:
+            handle = axis.imshow(img_iter, vmin=vmins[i], vmax=vmaxs[i], cmap="gray")
+        else:
+            handle = axis.imshow(img_iter, cmap="gray")
         plt.colorbar(handle, ax=axis)
         if titles is not None:
             axis.set_title(titles[i])
