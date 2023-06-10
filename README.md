@@ -63,5 +63,5 @@ pip3 install -e .
 
 <div align="center">
     <strong>Reconstruction with different &lambda;, taking &lambda; as coordinate.
-Larger &lambda; results in smoother signals in temporal dimension.</strong>
+Larger &lambda; results in smoother signals in temporal dimension. However, these reconstructions lose details and texture.</strong>
 </div>
