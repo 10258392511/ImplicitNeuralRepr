@@ -65,3 +65,57 @@ pip3 install -e .
     <strong>Reconstruction with different &lambda;, taking &lambda; as coordinate.
 Larger &lambda; results in smoother signals in temporal dimension. However, these reconstructions lose details and texture.</strong>
 </div>
+
+<br>
+
+### LIIF: 2D vs 3D Convolutional Encoder
+<table align="center" id="liif-2d-vs-3d-conv-enc">
+    <tr>
+        <th>Config</th>
+        <th>Mag<span style="color: white;">.</span></th>
+        <th>Mag<span style="color: white;">.</span> @ T / 2</th>
+        <th>Mag<span style="color: white;">.</span> Error @ T / 2</th>
+        <th>Mag<span style="color: white;">.</span> @ H / 2</th>
+    </tr>
+    <tbody align="center">
+        <tr>
+            <td>Original</td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/original/mag.gif" alt="original"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/original/half_T_mag.png" alt="original at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/original/half_T_mag_error.png" alt="original, error at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/original/half_H_mag.png" alt="original at half H"></td>
+        </tr>
+        <tr>
+            <td>ZF</td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/ZF/mag.gif" alt="ZF"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/ZF/half_T_mag.png" alt="ZF at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/ZF/half_T_mag_error.png" alt="ZF, error at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/ZF/half_H_mag.png" alt="ZF at half H"></td>
+        </tr>
+        <tr>
+            <td>2D, C = 8, Sine</td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/2d_8/mag.gif" alt="2D, C = 8,"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/2d_8/half_T_mag.png" alt="2D, C = 8, Sine, at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/2d_8/half_T_mag_error.png" alt="2D, C = 8, Sine, error at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/2d_8/half_H_mag.png" alt="2D, C = 8, Sine, at half H"></td>
+        </tr>
+        <tr>
+            <td>2D, C = 64, Sine</td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/2d_64/mag.gif" alt="2D, C = 64, Sine"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/2d_64/half_T_mag.png" alt="2D, C = 64, Sine at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/2d_64/half_T_mag_error.png" alt="2D, C = 64, Sine error at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/2d_64/half_H_mag.png" alt="2D, C = 64, Sine at half H"></td>
+        </tr>
+        <tr>
+            <td>3D, C = 16, Sine</td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/3d_16/mag.gif" alt="3D, C = 16, Sine"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/3d_16/half_T_mag.png" alt="3D, C = 16, Sine at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/3d_16/half_T_mag_error.png" alt="3D, C = 16, Sine error at half T"></td>
+            <td><img src="readme_images/liif_compare_2d_3d_conv_enc/3d_16/half_H_mag.png" alt="3D, C = 16, Sine at half H"></td>
+        </tr>
+    </tbody>
+</table>
+
+<div align="center">
+    <strong>3D convolutional encoder with sine activation LIIF is the best. Note that larger number of output channels for 2D convolution encoder results in static reconstruction.</strong>
+</div>
