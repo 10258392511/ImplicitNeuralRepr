@@ -24,7 +24,9 @@ CONFIG_PATHS = {
     "2d+time_liif_non_param": os.path.join(ROOT, "configs", "2d_time_liif_non_parametric.yml"),
     "2d+time_liif_3d_conv": os.path.join(ROOT, "configs", "2d_time_liif_3d_conv.yml"),
     "2d+time_liif_cont": os.path.join(ROOT, "configs", "2d_time_liif_cont.yml"),
-    # "2d+time_liif_cont": os.path.join(ROOT, "configs", "2d_time_liif_cont_cascade.yml")
+    # "2d+time_liif_cont": os.path.join(ROOT, "configs", "2d_time_liif_cont_cascade.yml"),
+    # "2d+time_VN": os.path.join(ROOT, "configs", "2d_time_VN.yml")
+    "2d+time_TVt": os.path.join(ROOT, "configs", "2d_time_TVt.yml")
 }
 
 

@@ -1,0 +1,31 @@
+dataset:
+  # mode: "train"  # no need to specify; set in DM
+  seed: 0
+  train_val_split: 0.9
+  T_high: 32
+  T_low: 8
+  T_query: 16
+  R_25: 6  # 6
+
+model:
+  name: "TemporalTV"
+  lambda: 0.01
+
+training:
+  diff_t_weight: 0.
+
+optimization:
+  opt_name: "Adam"
+  opt_params: 
+    lr: !!float 1e-3
+    betas: [0.9, 0.9]
+  # scheduler_name: "StepLR"
+  # scheduler_params:
+  #   step_size: 20
+  #   gamma: 0.5
+  scheduler_name: "ReduceOnPlateau"
+  scheduler_params:  
+    mode: "min"
+    factor: 0.5
+    patience: 50
+    min_lr: !!float 1e-5

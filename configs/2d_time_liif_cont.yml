@@ -12,7 +12,7 @@ model:
   eps_shift: !!float 1e-6
   mlp:
     # in_features: 3  # must >= 2: 1 + feature_map_dim; should be overidden by unet.out_channels + 1
-    hidden_features: 32  # 128
+    hidden_features: 128  # 128
     out_features: 2
     hidden_layers: 4  # 4
     outermost_linear: true
@@ -42,7 +42,6 @@ model:
 
 training:
   diff_t_weight: 0.
-  model: "LIIF"  # LIIF or VarNet
 
 optimization:
   opt_name: "Adam"

@@ -11,6 +11,8 @@ from .liif import (
     LIIFCascade
 )
 from .rdn import RDN
+# from .baselines import VariationalNetworkUpsample
+from .baselines import TemporalTV
 from ImplicitNeuralRepr.configs import load_config
 from typing import Union
 
@@ -25,7 +27,9 @@ MODEL_NAME_MAP = {
     "LIIFNonParametric": LIIFNonParametric,
     "LIIFParametricComplexSiren": LIIFParametricComplexSiren,
     "LIIFParametric3DConv": LIIFParametric3DConv,
-    "LIIFCascade": LIIFCascade
+    "LIIFCascade": LIIFCascade,
+    # "VariationalNetworkUpsample": VariationalNetworkUpsample
+    "TemporalTV": TemporalTV  # load it with a batch; DON'T use load_model(.)
 }
 
 

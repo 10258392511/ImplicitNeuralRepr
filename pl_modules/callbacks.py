@@ -255,7 +255,7 @@ class TrainLIIF3DConvCallback(Callback):
 
             if mask is not None:
                 mask = rearrange(mask, "T C N -> C N T")  # C = 1
-                vis_images(mask, if_save=True, save_dir=self.params["save_dir"], filename=f"mask.png", normalize=True)
+                vis_images(mask, if_save=True, save_dir=self.params["save_dir"], filename="mask.png", normalize=True)
         
         if self.counter % self.params["save_interval"] != 0 and self.counter != trainer.max_epochs - 1:
             return

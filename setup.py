@@ -23,6 +23,7 @@ setup(
         "monai",
         "PyYAML",
         "einops",
-        "h5py"
+        "h5py",
+        "future-annotations"
     ]
 )

@@ -752,3 +752,56 @@ class TrainLIIF3DConv(LightningModule):
             })
         
         return opt_dict
+
+
+class TrainTemporalTV(LightningModule):
+    def __init__(self, model: nn.Module, config: dict):
+        super().__init__()
+        self.model = model
+        self.config = config
+
+    def training_step(self, batch: Any, batch_idx: int) -> STEP_OUTPUT:
+        recons, loss = self.model()
+        img = batch[IMAGE_KEY]  # (1, T', H, W)
+        _, val_loss = self.upsample_recons_and_compute_error(recons, img)
+        
+        self.log("train_loss", loss, prog_bar=True, on_step=True)
+        self.log("val_loss", val_loss, prog_bar=True, on_step=True)
+
+        return loss
+    
+    @staticmethod
+    def upsample_recons_and_compute_error(recons: torch.Tensor, img: torch.Tensor):
+        # recons: (1, T, H, W), img: (1, T', H, W)
+        resize_factor = img.shape[1] / recons.shape[1]
+        recons = recons.unsqueeze(1)  # (1, 1, T, H, W)
+        recons = F.interpolate(torch.abs(recons), scale_factor=(resize_factor, 1, 1), mode="trilinear")  # (1, 1, T', H, W)
+        recons = recons.to(torch.complex64).squeeze(1)  # (1, T', H, W)
+        rel_mag_error = TrainLIIF3DConv.compute_l1_loss_complex(recons, img)
+
+        # (1, T', H, W)
+        return recons, rel_mag_error
+    
+    # def validation_step(self, batch: Any, batch_idx: int) -> Union[STEP_OUTPUT, None]:
+    #     recons, _ = self.model()  # (1, T, H, W)
+    #     img = batch[IMAGE_KEY]  # (1, T', H, W)
+    #     _, val_loss = self.upsample_recons_and_compute_error(recons, img)
+    #     self.log("val_loss", val_loss, prog_bar=True, on_step=True)
+
+    def configure_optimizers(self):
+        opt, scheduler = load_optimizer(self.config["optimization"], self.model)
+        opt_dict = {
+            "optimizer": opt
+        }
+        if scheduler is not None:
+            opt_dict.update({
+                "lr_scheduler": {
+                    "scheduler": scheduler
+                }
+            })
+        if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            opt_dict["lr_scheduler"].update({
+                "monitor": "val_loss"
+            })
+        
+        return opt_dict
