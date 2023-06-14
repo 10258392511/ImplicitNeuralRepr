@@ -10,6 +10,7 @@ from .liif import (
     LIIFParametric3DConv,
     LIIFCascade
 )
+from .rdn import RDN
 from ImplicitNeuralRepr.configs import load_config
 from typing import Union
 

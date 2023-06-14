@@ -23,8 +23,8 @@ CONFIG_PATHS = {
     "2d+time_liif_param": os.path.join(ROOT, "configs", "2d_time_liif_parametric.yml"),
     "2d+time_liif_non_param": os.path.join(ROOT, "configs", "2d_time_liif_non_parametric.yml"),
     "2d+time_liif_3d_conv": os.path.join(ROOT, "configs", "2d_time_liif_3d_conv.yml"),
-    # "2d+time_liif_cont": os.path.join(ROOT, "configs", "2d_time_liif_cont.yml"),
-    "2d+time_liif_cont": os.path.join(ROOT, "configs", "2d_time_liif_cont_cascade.yml")
+    "2d+time_liif_cont": os.path.join(ROOT, "configs", "2d_time_liif_cont.yml"),
+    # "2d+time_liif_cont": os.path.join(ROOT, "configs", "2d_time_liif_cont_cascade.yml")
 }
 
 
@@ -36,7 +36,8 @@ OPTIMIZER_MAP = {
 
 
 SCHEDULER_MAP = {
-    "StepLR": torch.optim.lr_scheduler.StepLR
+    "StepLR": torch.optim.lr_scheduler.StepLR,
+    "ReduceOnPlateau": torch.optim.lr_scheduler.ReduceLROnPlateau
 }
 
 

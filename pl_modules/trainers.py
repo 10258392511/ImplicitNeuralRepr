@@ -685,8 +685,8 @@ class TrainLIIF3DConv(LightningModule):
         img = batch[IMAGE_KEY]  # (B, T0, H, W)
         img_zf = batch[ZF_KEY]
         t_coord = batch[COORD_KEY]  # (B, T0)
-        # img_pred = self.model(img_zf, t_coord)  # (B, T0, H, W)
-        img_pred = self.model(**batch)  # (B, T0, H, W)
+        img_pred = self.model(img_zf, t_coord)  # (B, T0, H, W)
+        # img_pred = self.model(**batch)  # (B, T0, H, W)
         if_reduce = kwargs.get("if_reduce", True)
         if_return_zero_order = kwargs.get("if_return_zero_order", False)
         loss_zero_order = self.compute_l1_loss_complex(img_pred, img, if_reduce=if_reduce)
@@ -742,7 +742,13 @@ class TrainLIIF3DConv(LightningModule):
         }
         if scheduler is not None:
             opt_dict.update({
-                "lr_scheduler": scheduler
+                "lr_scheduler": {
+                    "scheduler": scheduler
+                }
+            })
+        if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            opt_dict["lr_scheduler"].update({
+                "monitor": "epoch_val_loss"
             })
         
         return opt_dict

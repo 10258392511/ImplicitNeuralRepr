@@ -5,14 +5,14 @@ dataset:
   T_high: 32
   T_low: 8
   T_query: 16
-  R_25: 6  # 6
+  R_25: 3  # 6
 
 model:
   name: "LIIFParametric3DConv"
   eps_shift: !!float 1e-6
   mlp:
     # in_features: 3  # must >= 2: 1 + feature_map_dim; should be overidden by unet.out_channels + 1
-    hidden_features: 128  # 128
+    hidden_features: 32  # 128
     out_features: 2
     hidden_layers: 4  # 4
     outermost_linear: true
@@ -22,17 +22,40 @@ model:
     in_channels: 2
     out_channels: 16  # feature_map_dim, 16
     channels: [16, 32, 64]
-    strides: [2, 1]
+    strides: [2, 2]
+  rdn:
+    in_channels: 2
+    # out_channels: 32  # "A"
+    # num_rdb_blocks: 20
+    # num_conv_layers: 6 
+    # out_channels: 64  # "B"
+    # num_rdb_blocks: 16
+    # num_conv_layers: 8  
+    out_channels: 32  # "A"
+    num_rdb_blocks: 5
+    num_conv_layers: 6 
+    # out_channels: 64  # "B"
+    # num_rdb_blocks: 4
+    # num_conv_layers: 8  
+  encoder:
+    name: "unet"  # rdn or unet
 
 training:
   diff_t_weight: 0.
+  model: "LIIF"  # LIIF or VarNet
 
 optimization:
   opt_name: "Adam"
   opt_params: 
     lr: !!float 1e-3
     betas: [0.9, 0.9]
-  scheduler_name: "StepLR"
-  scheduler_params:
-    step_size: 20
-    gamma: 0.5
+  # scheduler_name: "StepLR"
+  # scheduler_params:
+  #   step_size: 20
+  #   gamma: 0.5
+  scheduler_name: "ReduceOnPlateau"
+  scheduler_params:  
+    mode: "min"
+    factor: 0.5
+    patience: 5
+    min_lr: !!float 1e-6

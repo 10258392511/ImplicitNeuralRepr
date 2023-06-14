@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 
 from monai.networks.nets import UNet
+from .rdn import RDN
 from monai.networks.blocks import Convolution
 from ImplicitNeuralRepr.models.siren import SirenComplex
 from ImplicitNeuralRepr.linear_transforms import i2k_complex, k2i_complex
@@ -165,10 +166,21 @@ class LIIFParametric3DConv(nn.Module):
     def __init__(self, params: dict):
         super().__init__()
         self.params = params
-        self.params["mlp"]["in_features"] = self.params["unet"]["out_channels"] + 1
-        self.encoder = UNet(**self.params["unet"])
+        self.encoder = None
+        self.__load_encoder()
         self.mlp = SirenComplex(self.params["mlp"])
     
+    def __load_encoder(self):
+        enc_name = self.params["encoder"]["name"]
+        enc_config = self.params[enc_name]
+        self.params["mlp"]["in_features"] = enc_config["out_channels"] + 1
+        if enc_name == "rdn":
+            self.encoder = RDN(**enc_config)
+        elif enc_name == "unet":
+            self.encoder = UNet(**enc_config)
+        else:
+            raise NotImplementedError
+
     def forward(self, x_zf: torch.Tensor, t_coord: torch.Tensor, **kwargs):
         # x_zf: (B, T, H, W), t_coord: (B, T'); T should be fixed to be standard input length
         B, T, H, W = x_zf.shape
