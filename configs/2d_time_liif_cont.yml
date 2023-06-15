@@ -5,14 +5,14 @@ dataset:
   T_high: 32
   T_low: 8
   T_query: 16
-  R_25: 3  # 6
+  R_25: 6  # 6
 
 model:
   name: "LIIFParametric3DConv"
   eps_shift: !!float 1e-6
   mlp:
     # in_features: 3  # must >= 2: 1 + feature_map_dim; should be overidden by unet.out_channels + 1
-    hidden_features: 128  # 128
+    hidden_features: 32  # 128
     out_features: 2
     hidden_layers: 4  # 4
     outermost_linear: true
@@ -38,7 +38,7 @@ model:
     # num_rdb_blocks: 4
     # num_conv_layers: 8  
   encoder:
-    name: "unet"  # rdn or unet
+    name: "rdn"  # rdn or unet
 
 training:
   diff_t_weight: 0.

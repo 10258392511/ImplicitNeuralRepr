@@ -686,7 +686,7 @@ class TrainLIIF3DConv(LightningModule):
         img_zf = batch[ZF_KEY]
         t_coord = batch[COORD_KEY]  # (B, T0)
         img_pred = self.model(img_zf, t_coord)  # (B, T0, H, W)
-        # img_pred = self.model(**batch)  # (B, T0, H, W)
+        # img_pred = self.model(**batch)  # (B, T0, H, W); for LIIFCascade
         if_reduce = kwargs.get("if_reduce", True)
         if_return_zero_order = kwargs.get("if_return_zero_order", False)
         loss_zero_order = self.compute_l1_loss_complex(img_pred, img, if_reduce=if_reduce)

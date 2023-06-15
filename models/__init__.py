@@ -40,7 +40,7 @@ MODEL_RELOAD_PATHS = {
     "2d+time+explicit_reg": "2d_time_explicit_reg_logs/width_vs_depth/depth_8_width_512/2023_04_27_13_03_32_323027",
     "2d+time_liif_param": "2d_time_liif_logs/tune_enc_out_channels/C_8/2023_05_10_22_56_21_913628/",
     "2d+time_liif_3d_conv": "2d_time_liif_3d_conv_logs/binning_num_unet_out_channels_data_aug_0_5/C_16/2023_05_24_11_45_22_922523",
-    # "2d+time_liif_cont": "2d_time_liif_cont_logs/enc_architecture/u_net_R_25_1_orig_arch_save_bad_recons/2023_06_07_07_43_48_199398",
+    "2d+time_liif_cont": "2d_time_liif_cont_logs/architecture_search/final_results/RDN_R_6/2023_06_14_21_40_56_636072"
 }
 
 
