@@ -56,10 +56,10 @@ class TemporalTV(nn.Module):
     def __init__(self, params: dict, batch: dict):
         super().__init__()
         self.params = params
-        self.zf = batch[ZF_KEY]  # (T, H, W)
-        self.ksp = batch[MEASUREMENT_KEY]  # (T, H, W)
-        self.mask = batch[MASK_KEY]  # (T, 1, W)
-        self.finite_diff_t = FiniteDiff(dim=0)
+        self.zf = batch[ZF_KEY]  # (1, T, H, W)
+        self.ksp = batch[MEASUREMENT_KEY]  # (1, T, H, W)
+        self.mask = batch[MASK_KEY]  # (1, T, 1, W)
+        self.finite_diff_t = FiniteDiff(dim=1)
         
         self.kernel = nn.Parameter(self.zf, requires_grad=True)
         self.num_params = self.kernel.numel()
@@ -67,12 +67,12 @@ class TemporalTV(nn.Module):
         self.ksp = self.ksp.to(ptu.DEVICE)
 
     def forward(self):
-        recons = self.kernel
+        recons = self.kernel  # (1, T, H, W)
         dc_loss = 0.5 * torch.norm(self.mask * i2k_complex(recons, dims=-1) - self.ksp) ** 2
         reg_loss = torch.abs(self.finite_diff_t(recons)).sum()
         # loss = 1 / self.num_params * (dc_loss * + reg_loss * self.params["lambda"])
         loss =  dc_loss * + reg_loss * self.params["lambda"]
 
-        recons = recons.unsqueeze(0)  # (1, T, H, W)
+        # recons = recons.unsqueeze(0)  # (1, T, H, W)
 
         return recons, loss

@@ -105,6 +105,7 @@ if __name__ == "__main__":
 
     # training
     all_errors = []
+    save_inds = [337, 339, 341, 344, 345]
     for idx in range(len(ds)):
         print(f"Current: {idx + 1}/{len(ds)}")
         ds_iter = Subset(ds, [idx])
@@ -164,7 +165,8 @@ if __name__ == "__main__":
             wf.write(f"training time: {time_duration}\n")
         
         recons = model.kernel
-        rel_mag_error = save_batch_and_recons(batch, recons, output_dir)
+        if idx in save_inds:
+            rel_mag_error = save_batch_and_recons(batch, recons, output_dir)
         all_errors.append(rel_mag_error)
         print("-" * 100)
 
