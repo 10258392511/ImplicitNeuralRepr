@@ -40,7 +40,13 @@ MODEL_RELOAD_PATHS = {
     "2d+time+explicit_reg": "2d_time_explicit_reg_logs/width_vs_depth/depth_8_width_512/2023_04_27_13_03_32_323027",
     "2d+time_liif_param": "2d_time_liif_logs/tune_enc_out_channels/C_8/2023_05_10_22_56_21_913628/",
     "2d+time_liif_3d_conv": "2d_time_liif_3d_conv_logs/binning_num_unet_out_channels_data_aug_0_5/C_16/2023_05_24_11_45_22_922523",
-    "2d+time_liif_cont": "2d_time_liif_cont_logs/architecture_search/final_results/RDN_R_6/2023_06_14_21_40_56_636072"
+    # "2d+time_liif_cont": "2d_time_liif_cont_logs/architecture_search/final_results/unet_R_3_T_low_4/2023_06_21_16_58_10_089934",
+    # "2d+time_liif_cont": "2d_time_liif_cont_logs/architecture_search/final_results/unet_R_6_T_low_4/2023_06_21_16_56_48_044263",
+    # "2d+time_liif_cont": "2d_time_liif_cont_logs/architecture_search/final_results/unet_R_6/2023_06_14_20_47_19_285334",
+    # "2d+time_liif_cont": "2d_time_liif_cont_logs/architecture_search/final_results/unet_R_3/2023_06_14_10_35_45_212586",
+    # "2d+time_liif_cont": "2d_time_liif_cont_logs/architecture_search/final_results/RDN_R_3_T_low_4/2023_06_20_21_08_45_334229",
+    # "2d+time_liif_cont": "2d_time_liif_cont_logs/architecture_search/final_results/RDN_R_6_T_low_4/2023_06_20_20_59_18_492488",
+    "2d+time_liif_cont": "2d_time_liif_cont_logs/architecture_search/final_results/RDN_R_3/2023_06_14_10_35_05_497101"
 }
 
 

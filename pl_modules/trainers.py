@@ -15,11 +15,12 @@ from ImplicitNeuralRepr.objectives.regularization_profile import RegProfileLoss,
 from torchmetrics import MetricCollection
 from .utils import (
     load_optimizer,
-    load_reg_profile
+    load_reg_profile,
 )
 from ImplicitNeuralRepr.utils.utils import (
     save_vol_as_gif,
-    expand_dim_as
+    expand_dim_as,
+    temporal_interpolation
 )
 from ImplicitNeuralRepr.models.liif import sliding_window_inference
 from collections import defaultdict
@@ -773,9 +774,10 @@ class TrainTemporalTV(LightningModule):
     @staticmethod
     def upsample_recons_and_compute_error(recons: torch.Tensor, img: torch.Tensor):
         # recons: (1, T, H, W), img: (1, T', H, W)
-        resize_factor = img.shape[1] / recons.shape[1]
-        recons = recons.unsqueeze(1)  # (1, 1, T, H, W)
-        recons = F.interpolate(torch.abs(recons), scale_factor=(resize_factor, 1, 1), mode="trilinear")  # (1, 1, T', H, W)
+        # resize_factor = img.shape[1] / recons.shape[1]
+        # recons = recons.unsqueeze(1)  # (1, 1, T, H, W)
+        # recons = F.interpolate(torch.abs(recons), scale_factor=(resize_factor, 1, 1), mode="trilinear")  # (1, 1, T', H, W)
+        recons = temporal_interpolation(abs(recons), img.shape[1])
         recons = recons.to(torch.complex64).squeeze(1)  # (1, T', H, W)
         rel_mag_error = TrainLIIF3DConv.compute_l1_loss_complex(recons, img)
 

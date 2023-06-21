@@ -22,7 +22,7 @@ from ImplicitNeuralRepr.configs import (
 )
 from ImplicitNeuralRepr.datasets import CINEContDM
 from ImplicitNeuralRepr.models import load_model, reload_model
-from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif
+from ImplicitNeuralRepr.utils.utils import vis_images, save_vol_as_gif, temporal_interpolation
 from ImplicitNeuralRepr.pl_modules.trainers import TrainLIIF3DConv
 from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from ImplicitNeuralRepr.pl_modules.callbacks import TrainLIIF3DConvCallback
@@ -167,13 +167,15 @@ if __name__ == "__main__":
             data_idx = train_val_split_idx + val_idx
             data_dict = dm.test_ds[data_idx]
             img = data_dict[IMAGE_KEY]  # (T, H, W)
+            T_query = img.shape[0]
             img_zf = data_dict[ZF_KEY]
+            img_zf = temporal_interpolation(torch.abs(img_zf), T_query)
             output_dir = os.path.join(args_dict["output_dir"], f"idx_{data_idx}")
-            torch.save(img.detach().cpu(), os.path.join(output_dir, "orig.pt"))
-            torch.save(img_zf.detach().cpu(), os.path.join(output_dir, "zf.pt"))
             save_vol_as_gif(torch.abs(img.unsqueeze(1)), save_dir=output_dir, filename="orig_mag.gif")
             save_vol_as_gif(torch.abs(img_zf.unsqueeze(1)), save_dir=output_dir, filename="zf_mag.gif")
-
+            torch.save(img.detach().cpu(), os.path.join(output_dir, "orig.pt"))
+            torch.save(img_zf.detach().cpu(), os.path.join(output_dir, "zf.pt"))
+            
             recons = all_recons[data_idx, ...].detach().cpu().clone()  # (T, H, W)
+            save_vol_as_gif(torch.abs(recons.unsqueeze(1)), save_dir=output_dir, filename="recons_mag.gif")            
             torch.save(recons, os.path.join(output_dir, "recons.pt"))
-            save_vol_as_gif(torch.abs(recons.unsqueeze(1)), save_dir=output_dir, filename="recons_mag.gif")

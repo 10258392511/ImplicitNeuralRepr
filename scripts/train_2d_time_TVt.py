@@ -38,7 +38,7 @@ from ImplicitNeuralRepr.configs import (
 )
 
 
-def save_batch_and_recons(batch: Dict[str, torch.Tensor], recons: torch.Tensor, save_dir: str):
+def save_batch_and_recons(batch: Dict[str, torch.Tensor], recons: torch.Tensor, save_dir: str, if_save=True):
     # recons: (T', H, W)
     img = batch[IMAGE_KEY]
     zf = batch[ZF_KEY]  # (T, H, W)
@@ -49,7 +49,8 @@ def save_batch_and_recons(batch: Dict[str, torch.Tensor], recons: torch.Tensor, 
     tensors = [img, zf, recons]
     filenames = ["orig", "ZF", "recons"]
     for tensor_iter, filename_iter in zip(tensors, filenames):
-        torch.save(tensor_iter.detach().cpu(), os.path.join(save_dir, f"{filename_iter}.pt"))
+        if if_save:
+            torch.save(tensor_iter.detach().cpu(), os.path.join(save_dir, f"{filename_iter}.pt"))
         tensor_iter = tensor_iter.unsqueeze(1)  # (T, C=1, H, W)
         save_vol_as_gif(torch.abs(tensor_iter), save_dir=save_dir, filename=f"{filename_iter}_mag.gif")
 
@@ -105,7 +106,7 @@ if __name__ == "__main__":
 
     # training
     all_errors = []
-    save_inds = [337, 339, 341, 344, 345]
+    save_inds = [0, 337, 339, 341, 344, 345]
     for idx in range(len(ds)):
         print(f"Current: {idx + 1}/{len(ds)}")
         ds_iter = Subset(ds, [idx])
@@ -165,8 +166,10 @@ if __name__ == "__main__":
             wf.write(f"training time: {time_duration}\n")
         
         recons = model.kernel
+        if_save = False
         if idx in save_inds:
-            rel_mag_error = save_batch_and_recons(batch, recons, output_dir)
+            if_save = True
+        rel_mag_error = save_batch_and_recons(batch, recons, output_dir, if_save=if_save)
         all_errors.append(rel_mag_error)
         print("-" * 100)
 
@@ -177,4 +180,5 @@ if __name__ == "__main__":
     with open(os.path.join(args_dict["output_dir"], "results.txt"), "w") as wf:
         wf.write(f"train_error: {train_errors.mean()}\n")
         wf.write(f"val_error: {val_errors.mean()}\n")
+        wf.write(f"all_errors: {all_errors.mean()}\n")
         wf.write(f"number of training samples: {num_train_samples}\n")

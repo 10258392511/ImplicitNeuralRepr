@@ -3,8 +3,8 @@ dataset:
   seed: 0
   train_val_split: 0.9
   T_high: 32
-  T_low: 4  # 8
-  T_query: 16
+  T_low: 8  # 8
+  T_query: 64
   R_25: 3  # 6
 
 model:

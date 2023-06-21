@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import SimpleITK as sitk
 import os
 import yaml
@@ -11,6 +12,7 @@ import ImplicitNeuralRepr.utils.pytorch_utils as ptu
 from PIL import Image
 from ImplicitNeuralRepr.models import SirenComplex
 from ImplicitNeuralRepr.configs import FIGSIZE_UNIT
+from einops import rearrange
 from typing import Union
 
 
@@ -239,3 +241,21 @@ def siren_param_hist(model: SirenComplex, **kwargs):
 #     X_out = torch.nanmean(torch.real(X), **kwargs) + 1j * torch.nanmean(torch.imag(X), **kwargs)
 
 #     return X_out
+
+
+def temporal_interpolation(x: torch.Tensor, out_size: int, mode="bicubic"):
+    """ 
+    x: (B, T, H, W) or (T, H, W)
+    """
+    x_ndim = x.ndim
+    if x_ndim == 3:
+        x = x.unsqueeze(0)  # (1, T, H, W)
+    B, T, H, W = x.shape
+    x = rearrange(x, "B T H W -> B H W T")
+    x = F.interpolate(x, size=(W, out_size), mode=mode)
+    x = rearrange(x, "B H W T -> B T H W")
+    if x_ndim == 3:
+        x = x.squeeze(0)
+
+    # the same shape as input
+    return x
