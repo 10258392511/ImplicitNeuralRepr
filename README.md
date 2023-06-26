@@ -252,11 +252,11 @@ Larger &lambda; results in smoother signals in temporal dimension. However, thes
             <td>6</td>
             <td>4</td>
             <td>Original</td>
-            <td><img src="readme_images/liif_architecture_search/R_6_T_4/original/mag.gif" alt="original"></td>
-            <td><img src="readme_images/liif_architecture_search/R_6_T_4/original/half_T_mag.png" alt="original at half T, R = 6, T = 4"></td>
-            <td><img src="readme_images/liif_architecture_search/R_6_T_4/original/half_T_mag_error.png" alt="original, error at half T, R = 6, T = 4"></td>
-            <td><img src="readme_images/liif_architecture_search/R_6_T_4/original/half_H_mag.png" alt="original at half H, R = 6, T = 4"></td>
-            <td><img src="readme_images/liif_architecture_search/R_6_T_4/original/half_H_mag_error.png" alt="original at half H, error at half H, R = 6, T = 4"></td>
+            <td><img src="readme_images/liif_architecture_search/R_6_T_4/Original/mag.gif" alt="original"></td>
+            <td><img src="readme_images/liif_architecture_search/R_6_T_4/Original/half_T_mag.png" alt="original at half T, R = 6, T = 4"></td>
+            <td><img src="readme_images/liif_architecture_search/R_6_T_4/Original/half_T_mag_error.png" alt="original, error at half T, R = 6, T = 4"></td>
+            <td><img src="readme_images/liif_architecture_search/R_6_T_4/Original/half_H_mag.png" alt="original at half H, R = 6, T = 4"></td>
+            <td><img src="readme_images/liif_architecture_search/R_6_T_4/Original/half_H_mag_error.png" alt="original at half H, error at half H, R = 6, T = 4"></td>
             <td>N/A</td>
         </tr>
         <tr>
