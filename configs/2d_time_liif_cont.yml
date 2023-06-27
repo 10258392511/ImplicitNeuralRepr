@@ -5,7 +5,7 @@ dataset:
   T_high: 32
   T_low: 8  # 8
   T_query: 64
-  R_25: 3  # 6
+  R_25: 6  # 6
 
 model:
   name: "LIIFParametric3DConv"
